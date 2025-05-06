@@ -76,6 +76,12 @@ impl Display for Identifier {
     }
 }
 
+impl From<Identifier> for Token {
+    fn from(value: Identifier) -> Self {
+        Self::Identifier(value)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ErrorToken {
     value: Box<str>,
@@ -97,6 +103,12 @@ impl HasSpan for ErrorToken {
 impl Display for ErrorToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.value)
+    }
+}
+
+impl From<ErrorToken> for Token {
+    fn from(value: ErrorToken) -> Self {
+        Self::ErrorToken(value)
     }
 }
 
@@ -125,6 +137,12 @@ impl Display for NumberLiteral {
     }
 }
 
+impl From<NumberLiteral> for Token {
+    fn from(value: NumberLiteral) -> Self {
+        Self::NumberLiteral(value)
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct Separator {
     kind: SeparatorKind,
@@ -134,6 +152,10 @@ pub struct Separator {
 impl Separator {
     pub fn new(kind: SeparatorKind, span: Span) -> Self {
         Self { kind, span }
+    }
+
+    pub fn kind(&self) -> SeparatorKind {
+        self.kind
     }
 }
 
@@ -146,6 +168,12 @@ impl HasSpan for Separator {
 impl Display for Separator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.kind)
+    }
+}
+
+impl From<Separator> for Token {
+    fn from(value: Separator) -> Self {
+        Self::Separator(value)
     }
 }
 
@@ -180,6 +208,10 @@ impl Operator {
     pub fn new(kind: OperatorKind, span: Span) -> Self {
         Self { kind, span }
     }
+
+    pub fn kind(&self) -> OperatorKind {
+        self.kind
+    }
 }
 
 impl HasSpan for Operator {
@@ -191,6 +223,12 @@ impl HasSpan for Operator {
 impl Display for Operator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.kind)
+    }
+}
+
+impl From<Operator> for Token {
+    fn from(value: Operator) -> Self {
+        Self::Operator(value)
     }
 }
 
@@ -238,6 +276,10 @@ impl Keyword {
     pub fn new(kind: KeywordKind, span: Span) -> Self {
         Self { kind, span }
     }
+
+    pub fn kind(&self) -> KeywordKind {
+        self.kind
+    }
 }
 
 impl HasSpan for Keyword {
@@ -249,6 +291,12 @@ impl HasSpan for Keyword {
 impl Display for Keyword {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.kind)
+    }
+}
+
+impl From<Keyword> for Token {
+    fn from(value: Keyword) -> Self {
+        Self::Keyword(value)
     }
 }
 
