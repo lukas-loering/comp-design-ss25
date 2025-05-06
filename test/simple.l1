@@ -1,0 +1,13 @@
+// this is the main entry point
+int main() {
+    int x;
+    int y = 42;
+    int z = 0x1A3F;
+    /* this is a multiline comment */
+    x = y + z;
+    y += 10;
+    /* this is a multiline comment 
+    it can span multiple lines*/
+    z = -x * (y - 3);
+    return x;
+}
