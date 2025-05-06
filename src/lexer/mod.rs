@@ -151,7 +151,7 @@ impl<'s> Lexer<'s> {
                                 self.peek(0) == "*" && self.has_more(1) && self.peek(1) == "/";
                             if end_of_comment {
                                 self.pos += 2;
-                                let _ = multi_line_depth.saturating_sub(1);
+                                multi_line_depth -= 1;
                                 if multi_line_depth == 0 {
                                     comment = CommentKind::None;
                                 }
