@@ -6,7 +6,7 @@ use crate::{
 use super::{kind::Kind, symbol::Name, visitor::Visitor};
 
 pub trait Tree<T, R>: HasSpan {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R;
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R;
 }
 
 pub enum LValueTree {
@@ -22,7 +22,7 @@ impl HasSpan for LValueTree {
 }
 
 impl<T, R> Tree<T, R> for LValueTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
         match self {
             LValueTree::LValueIdentTree(lvalue_ident_tree) => {
                 lvalue_ident_tree.accept(visitor, data)
@@ -53,7 +53,7 @@ impl HasSpan for LValueIdentTree {
 }
 
 impl<T, R> Tree<T, R> for LValueIdentTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
         visitor.visit_lvalue_ident(self, data)
     }
 }
@@ -77,7 +77,7 @@ impl HasSpan for ExpressionTree {
 }
 
 impl<T, R> Tree<T, R> for ExpressionTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
         match self {
             ExpressionTree::BinaryOpTree(binary_op_tree) => binary_op_tree.accept(visitor, data),
             ExpressionTree::IdentExprTree(ident_expr_tree) => ident_expr_tree.accept(visitor, data),
@@ -93,6 +93,16 @@ pub struct BinaryOpTree {
     operator_kind: OperatorKind,
 }
 
+impl BinaryOpTree {
+    pub fn lhs(&self) -> &ExpressionTree {
+        &self.lhs
+    }
+
+    pub fn rhs(&self) -> &ExpressionTree {
+        &self.rhs
+    }
+}
+
 impl HasSpan for BinaryOpTree {
     fn span(&self) -> Span {
         self.lhs.span().merge(self.rhs.span())
@@ -100,7 +110,7 @@ impl HasSpan for BinaryOpTree {
 }
 
 impl<T, R> Tree<T, R> for BinaryOpTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
         visitor.visit_binary_op(self, data)
     }
 }
@@ -115,7 +125,7 @@ impl HasSpan for IdentExprTree {
 }
 
 impl<T, R> Tree<T, R> for IdentExprTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
         visitor.visit_ident_expr(self, data)
     }
 }
@@ -133,7 +143,7 @@ impl HasSpan for LiteralTree {
 }
 
 impl<T, R> Tree<T, R> for LiteralTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
         visitor.visit_literal(self, data)
     }
 }
@@ -167,7 +177,7 @@ impl HasSpan for NegateTree {
 }
 
 impl<T, R> Tree<T, R> for NegateTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
         visitor.visit_negate(self, data)
     }
 }
@@ -177,6 +187,30 @@ pub enum StatementTree {
     BlockTree(BlockTree),
     DeclarationTree(DeclarationTree),
     ReturnTree(ReturnTree),
+}
+
+impl HasSpan for StatementTree {
+    fn span(&self) -> Span {
+        match self {
+            StatementTree::AssignmentTree(assignment_tree) => assignment_tree.span(),
+            StatementTree::BlockTree(block_tree) => block_tree.span(),
+            StatementTree::DeclarationTree(declaration_tree) => declaration_tree.span(),
+            StatementTree::ReturnTree(return_tree) => return_tree.span(),
+        }
+    }
+}
+
+impl<T, R> Tree<T, R> for StatementTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+        match self {
+            StatementTree::AssignmentTree(assignment_tree) => assignment_tree.accept(visitor, data),
+            StatementTree::BlockTree(block_tree) => block_tree.accept(visitor, data),
+            StatementTree::DeclarationTree(declaration_tree) => {
+                declaration_tree.accept(visitor, data)
+            }
+            StatementTree::ReturnTree(return_tree) => return_tree.accept(visitor, data),
+        }
+    }
 }
 
 pub struct AssignmentTree {
@@ -192,14 +226,30 @@ impl HasSpan for AssignmentTree {
 }
 
 impl<T, R> Tree<T, R> for AssignmentTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
         visitor.visit_assignment(self, data)
+    }
+}
+
+impl AssignmentTree {
+    pub fn lvalue(&self) -> &LValueTree {
+        &self.lvalue
+    }
+
+    pub fn expression(&self) -> &ExpressionTree {
+        &self.expression
     }
 }
 
 pub struct BlockTree {
     statements: Box<[StatementTree]>,
     span: Span,
+}
+
+impl BlockTree {
+    pub fn statements(&self) -> &[StatementTree] {
+        &self.statements
+    }
 }
 
 impl HasSpan for BlockTree {
@@ -209,7 +259,7 @@ impl HasSpan for BlockTree {
 }
 
 impl<T, R> Tree<T, R> for BlockTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
         visitor.visit_block(self, data)
     }
 }
@@ -230,7 +280,7 @@ impl HasSpan for DeclarationTree {
 }
 
 impl<T, R> Tree<T, R> for DeclarationTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
         visitor.visit_declaration(self, data)
     }
 }
@@ -247,7 +297,7 @@ impl HasSpan for KindTree {
 }
 
 impl<T, R> Tree<T, R> for KindTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
         visitor.visit_kind(self, data)
     }
 }
@@ -264,7 +314,7 @@ impl HasSpan for ReturnTree {
 }
 
 impl<T, R> Tree<T, R> for ReturnTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
         visitor.visit_return(self, data)
     }
 }
@@ -282,7 +332,7 @@ impl HasSpan for ProgrammTree {
 }
 
 impl<T, R> Tree<T, R> for ProgrammTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
         visitor.visit_programm(self, data)
     }
 }
@@ -307,7 +357,7 @@ impl HasSpan for FunctionTree {
 }
 
 impl<T, R> Tree<T, R> for FunctionTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
         visitor.visit_function(self, data)
     }
 }
