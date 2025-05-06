@@ -62,6 +62,10 @@ impl Identifier {
     pub fn new(value: Box<str>, span: Span) -> Self {
         Self { value, span }
     }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
 }
 
 impl HasSpan for Identifier {
@@ -91,7 +95,11 @@ pub struct ErrorToken {
 
 impl ErrorToken {
     pub fn new(value: Box<str>, err_msg: Box<str>, span: Span) -> Self {
-        Self { value, span, err_msg }
+        Self {
+            value,
+            span,
+            err_msg,
+        }
     }
 }
 

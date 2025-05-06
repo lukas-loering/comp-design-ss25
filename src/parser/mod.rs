@@ -1,6 +1,12 @@
+use tokensource::TokenSource;
+
 use crate::lexer::tokens::{Identifier, KeywordKind, OperatorKind, SeparatorKind, Token};
 
+mod ast;
+mod kind;
+mod symbol;
 mod tokensource;
+mod visitor;
 
 #[derive(Debug, Clone, thiserror::Error)]
 #[non_exhaustive]
@@ -15,4 +21,15 @@ enum ParseError {
     ExpectedSeparator { expected: SeparatorKind, got: Token },
     #[error("reached end of file")]
     EndOfFile,
+}
+
+#[derive(Debug, Clone)]
+struct Parser {
+    tokens: TokenSource,
+}
+
+impl Parser {
+    pub fn new(tokens: TokenSource) -> Self {
+        Self { tokens }
+    }
 }

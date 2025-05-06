@@ -1,0 +1,313 @@
+use crate::{
+    lexer::tokens::{Operator, OperatorKind},
+    span::{HasSpan, Position, Span},
+};
+
+use super::{kind::Kind, symbol::Name, visitor::Visitor};
+
+pub trait Tree<T, R>: HasSpan {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R;
+}
+
+pub enum LValueTree {
+    LValueIdentTree(LValueIdentTree),
+}
+
+impl HasSpan for LValueTree {
+    fn span(&self) -> Span {
+        match self {
+            LValueTree::LValueIdentTree(lvalue_ident_tree) => lvalue_ident_tree.span(),
+        }
+    }
+}
+
+impl<T, R> Tree<T, R> for LValueTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+        match self {
+            LValueTree::LValueIdentTree(lvalue_ident_tree) => {
+                lvalue_ident_tree.accept(visitor, data)
+            }
+        }
+    }
+}
+
+pub struct NameTree {
+    name: Name,
+    span: Span,
+}
+
+impl HasSpan for NameTree {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
+pub struct LValueIdentTree {
+    name: NameTree,
+}
+
+impl HasSpan for LValueIdentTree {
+    fn span(&self) -> Span {
+        self.name.span()
+    }
+}
+
+impl<T, R> Tree<T, R> for LValueIdentTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+        visitor.visit_lvalue_ident(self, data)
+    }
+}
+
+pub enum ExpressionTree {
+    BinaryOpTree(BinaryOpTree),
+    IdentExprTree(IdentExprTree),
+    LiteralTree(LiteralTree),
+    NegateTree(NegateTree),
+}
+
+impl HasSpan for ExpressionTree {
+    fn span(&self) -> Span {
+        match self {
+            ExpressionTree::BinaryOpTree(binary_op_tree) => binary_op_tree.span(),
+            ExpressionTree::IdentExprTree(ident_expr_tree) => ident_expr_tree.span(),
+            ExpressionTree::LiteralTree(literal_tree) => literal_tree.span(),
+            ExpressionTree::NegateTree(negate_tree) => negate_tree.span(),
+        }
+    }
+}
+
+impl<T, R> Tree<T, R> for ExpressionTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+        match self {
+            ExpressionTree::BinaryOpTree(binary_op_tree) => binary_op_tree.accept(visitor, data),
+            ExpressionTree::IdentExprTree(ident_expr_tree) => ident_expr_tree.accept(visitor, data),
+            ExpressionTree::LiteralTree(literal_tree) => literal_tree.accept(visitor, data),
+            ExpressionTree::NegateTree(negate_tree) => negate_tree.accept(visitor, data),
+        }
+    }
+}
+
+pub struct BinaryOpTree {
+    lhs: Box<ExpressionTree>,
+    rhs: Box<ExpressionTree>,
+    operator_kind: OperatorKind,
+}
+
+impl HasSpan for BinaryOpTree {
+    fn span(&self) -> Span {
+        self.lhs.span().merge(self.rhs.span())
+    }
+}
+
+impl<T, R> Tree<T, R> for BinaryOpTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+        visitor.visit_binary_op(self, data)
+    }
+}
+pub struct IdentExprTree {
+    name: NameTree,
+}
+
+impl HasSpan for IdentExprTree {
+    fn span(&self) -> Span {
+        self.name.span()
+    }
+}
+
+impl<T, R> Tree<T, R> for IdentExprTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+        visitor.visit_ident_expr(self, data)
+    }
+}
+
+pub struct LiteralTree {
+    value: Box<str>,
+    base: u32,
+    span: Span,
+}
+
+impl HasSpan for LiteralTree {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
+impl<T, R> Tree<T, R> for LiteralTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+        visitor.visit_literal(self, data)
+    }
+}
+
+impl LiteralTree {
+    pub fn parse_value(&self) -> Option<i64> {
+        let value = if self.base == 16 {
+            // skip the `0x` prefix of hex literals
+            &self.value[2..]
+        } else {
+            &self.value
+        };
+        let value = value.parse::<i64>().ok()?;
+        // bounds check, we only want non-negative 32-bit integers (for now)
+        if value < 0 || value > i32::MAX.into() {
+            return None;
+        }
+        Some(value)
+    }
+}
+
+pub struct NegateTree {
+    expr_tree: Box<ExpressionTree>,
+    minus_pos: Span,
+}
+
+impl HasSpan for NegateTree {
+    fn span(&self) -> Span {
+        self.minus_pos.merge(self.expr_tree.span())
+    }
+}
+
+impl<T, R> Tree<T, R> for NegateTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+        visitor.visit_negate(self, data)
+    }
+}
+
+pub enum StatementTree {
+    AssignmentTree(AssignmentTree),
+    BlockTree(BlockTree),
+    DeclarationTree(DeclarationTree),
+    ReturnTree(ReturnTree),
+}
+
+pub struct AssignmentTree {
+    lvalue: LValueTree,
+    operator: Operator,
+    expression: ExpressionTree,
+}
+
+impl HasSpan for AssignmentTree {
+    fn span(&self) -> Span {
+        self.lvalue.span().merge(self.expression.span())
+    }
+}
+
+impl<T, R> Tree<T, R> for AssignmentTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+        visitor.visit_assignment(self, data)
+    }
+}
+
+pub struct BlockTree {
+    statements: Box<[StatementTree]>,
+    span: Span,
+}
+
+impl HasSpan for BlockTree {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
+impl<T, R> Tree<T, R> for BlockTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+        visitor.visit_block(self, data)
+    }
+}
+
+pub struct DeclarationTree {
+    kind: KindTree,
+    name: NameTree,
+    initializer: Option<ExpressionTree>,
+}
+
+impl HasSpan for DeclarationTree {
+    fn span(&self) -> Span {
+        match &self.initializer {
+            Some(initializer) => self.kind.span().merge(initializer.span()),
+            None => self.kind.span().merge(self.name.span()),
+        }
+    }
+}
+
+impl<T, R> Tree<T, R> for DeclarationTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+        visitor.visit_declaration(self, data)
+    }
+}
+
+pub struct KindTree {
+    kind: Kind,
+    span: Span,
+}
+
+impl HasSpan for KindTree {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
+impl<T, R> Tree<T, R> for KindTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+        visitor.visit_kind(self, data)
+    }
+}
+
+pub struct ReturnTree {
+    expr: ExpressionTree,
+    start_pos: Position,
+}
+
+impl HasSpan for ReturnTree {
+    fn span(&self) -> Span {
+        Span::new(self.start_pos, self.expr.span().end())
+    }
+}
+
+impl<T, R> Tree<T, R> for ReturnTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+        visitor.visit_return(self, data)
+    }
+}
+
+pub struct ProgrammTree {
+    top_level: Box<[FunctionTree]>,
+}
+
+impl HasSpan for ProgrammTree {
+    fn span(&self) -> Span {
+        let first = self.top_level.first().expect("should never be empty");
+        let last = self.top_level.last().expect("should never be empty");
+        Span::new(first.span().start(), last.span().end())
+    }
+}
+
+impl<T, R> Tree<T, R> for ProgrammTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+        visitor.visit_programm(self, data)
+    }
+}
+
+impl ProgrammTree {
+    pub fn new(top_level: Box<[FunctionTree]>) -> Self {
+        assert!(!top_level.is_empty(), "must not be empty");
+        Self { top_level }
+    }
+}
+
+pub struct FunctionTree {
+    return_type: KindTree,
+    name: NameTree,
+    body: BlockTree,
+}
+
+impl HasSpan for FunctionTree {
+    fn span(&self) -> Span {
+        Span::new(self.return_type.span().start(), self.body.span().end())
+    }
+}
+
+impl<T, R> Tree<T, R> for FunctionTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: T) -> R {
+        visitor.visit_function(self, data)
+    }
+}
