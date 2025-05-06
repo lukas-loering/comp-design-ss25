@@ -86,11 +86,12 @@ impl From<Identifier> for Token {
 pub struct ErrorToken {
     value: Box<str>,
     span: Span,
+    err_msg: Box<str>,
 }
 
 impl ErrorToken {
-    pub fn new(value: Box<str>, span: Span) -> Self {
-        Self { value, span }
+    pub fn new(value: Box<str>, err_msg: Box<str>, span: Span) -> Self {
+        Self { value, span, err_msg }
     }
 }
 

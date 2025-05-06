@@ -18,6 +18,14 @@ pub struct Lexer<'s> {
     line: usize,
 }
 
+impl<'s> Iterator for Lexer<'s> {
+    type Item = tokens::Token;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_token()
+    }
+}
+
 fn is_identifier_char(s: &str) -> bool {
     s.chars().all(|c| c == '_' || c.is_ascii_alphanumeric())
 }
@@ -42,8 +50,8 @@ impl<'s> Lexer<'s> {
     }
 
     pub fn next_token(&mut self) -> Option<Token> {
-        if let Some(error_token) = self.skip_whitespace() {
-            return Some(Token::ErrorToken(error_token));
+        if let Some(error_token) = self.skip_whitespace().map(Token::from) {
+            return Some(error_token);
         };
         if self.pos >= self.source.len() {
             return None;
@@ -68,7 +76,11 @@ impl<'s> Lexer<'s> {
                         self.lex_identifier_or_keyword()
                     }
                 } else {
-                    Token::ErrorToken(ErrorToken::new(self.peek(0).into(), self.build_span(1)))
+                    Token::ErrorToken(ErrorToken::new(
+                        self.peek(0).into(),
+                        "invalid token".into(),
+                        self.build_span(1),
+                    ))
                 }
             }
         };
@@ -76,7 +88,7 @@ impl<'s> Lexer<'s> {
     }
 
     fn lex_separator(&mut self, separator_kind: SeparatorKind) -> Token {
-        Token::Separator(Separator::new(separator_kind, self.build_span(1)))
+        Separator::new(separator_kind, self.build_span(1)).into()
     }
 
     fn lex_single_or_assign(&mut self, single: OperatorKind, assign: OperatorKind) -> Token {
@@ -85,7 +97,7 @@ impl<'s> Lexer<'s> {
         } else {
             Operator::new(single, self.build_span(1))
         };
-        Token::Operator(operator)
+        operator.into()
     }
 
     fn skip_whitespace(&mut self) -> Option<ErrorToken> {
@@ -168,6 +180,7 @@ impl<'s> Lexer<'s> {
         if !self.has_more(0) && comment == CommentKind::MultiLine {
             return Some(ErrorToken::new(
                 self.source[comment_start..].concat().into_boxed_str(),
+                "unclosed multi-line comment".into(),
                 self.build_span(0),
             ));
         }
@@ -197,13 +210,8 @@ impl<'s> Lexer<'s> {
         }
         let ident = self.get_value(offset);
         match KeywordKind::is_keyword(&ident) {
-            Some(keyword_kind) => {
-                Token::Keyword(Keyword::new(keyword_kind, self.build_span(offset)))
-            }
-            None => Token::Identifier(Identifier::new(
-                ident.into_boxed_str(),
-                self.build_span(offset),
-            )),
+            Some(keyword_kind) => Keyword::new(keyword_kind, self.build_span(offset)).into(),
+            None => Identifier::new(ident.into_boxed_str(), self.build_span(offset)).into(),
         }
     }
 
@@ -217,9 +225,9 @@ impl<'s> Lexer<'s> {
             let span = self.build_span(offset);
             if offset == 2 {
                 // `0x` without any more digits -> an error
-                return Token::ErrorToken(ErrorToken::new(value, span));
+                return ErrorToken::new(value, "orphaned `0x`".into(), span).into();
             }
-            return Token::NumberLiteral(NumberLiteral::new(value, 16, span));
+            return NumberLiteral::new(value, 16, span).into();
         }
         // not a hex digit, parse base 10
         let mut offset = 1;
@@ -228,16 +236,19 @@ impl<'s> Lexer<'s> {
         }
         if self.peek(offset) == "0" && offset > 1 {
             // leading zero not allowed
-            return Token::ErrorToken(ErrorToken::new(
+            return ErrorToken::new(
                 self.get_value(offset).into_boxed_str(),
+                "leading zeros are not allowed for numeric literals".into(),
                 self.build_span(offset),
-            ));
+            )
+            .into();
         }
-        return Token::NumberLiteral(NumberLiteral::new(
+        return NumberLiteral::new(
             self.get_value(offset).into_boxed_str(),
             10,
             self.build_span(offset),
-        ));
+        )
+        .into();
     }
 
     fn is_hex_prefix(&mut self) -> bool {
