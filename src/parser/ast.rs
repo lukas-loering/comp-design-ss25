@@ -13,6 +13,12 @@ pub enum LValueTree {
     LValueIdentTree(LValueIdentTree),
 }
 
+impl From<LValueIdentTree> for LValueTree {
+    fn from(value: LValueIdentTree) -> Self {
+        Self::LValueIdentTree(value)
+    }
+}
+
 impl HasSpan for LValueTree {
     fn span(&self) -> Span {
         match self {
@@ -36,6 +42,12 @@ pub struct NameTree {
     span: Span,
 }
 
+impl NameTree {
+    pub fn new(name: Name, span: Span) -> Self {
+        Self { name, span }
+    }
+}
+
 impl HasSpan for NameTree {
     fn span(&self) -> Span {
         self.span
@@ -47,6 +59,10 @@ pub struct LValueIdentTree {
 }
 
 impl LValueIdentTree {
+    pub fn new(name: NameTree) -> Self {
+        Self { name }
+    }
+
     pub fn name(&self) -> &NameTree {
         &self.name
     }
@@ -75,6 +91,30 @@ pub enum ExpressionTree {
     IdentExprTree(IdentExprTree),
     LiteralTree(LiteralTree),
     NegateTree(NegateTree),
+}
+
+impl From<BinaryOpTree> for ExpressionTree {
+    fn from(value: BinaryOpTree) -> Self {
+        Self::BinaryOpTree(value)
+    }
+}
+
+impl From<IdentExprTree> for ExpressionTree {
+    fn from(value: IdentExprTree) -> Self {
+        Self::IdentExprTree(value)
+    }
+}
+
+impl From<LiteralTree> for ExpressionTree {
+    fn from(value: LiteralTree) -> Self {
+        Self::LiteralTree(value)
+    }
+}
+
+impl From<NegateTree> for ExpressionTree {
+    fn from(value: NegateTree) -> Self {
+        Self::NegateTree(value)
+    }
 }
 
 impl HasSpan for ExpressionTree {
@@ -106,6 +146,18 @@ pub struct BinaryOpTree {
 }
 
 impl BinaryOpTree {
+    pub fn new(
+        lhs: Box<ExpressionTree>,
+        rhs: Box<ExpressionTree>,
+        operator_kind: OperatorKind,
+    ) -> Self {
+        Self {
+            lhs,
+            rhs,
+            operator_kind,
+        }
+    }
+
     pub fn lhs(&self) -> &ExpressionTree {
         &self.lhs
     }
@@ -131,6 +183,10 @@ pub struct IdentExprTree {
 }
 
 impl IdentExprTree {
+    pub fn new(name: NameTree) -> Self {
+        Self { name }
+    }
+
     pub fn name(&self) -> &NameTree {
         &self.name
     }
@@ -167,6 +223,10 @@ impl<T, R> Tree<T, R> for LiteralTree {
 }
 
 impl LiteralTree {
+    pub fn new(value: Box<str>, base: u32, span: Span) -> Self {
+        Self { value, base, span }
+    }
+
     pub fn parse_value(&self) -> Option<i64> {
         let value = if self.base == 16 {
             // skip the `0x` prefix of hex literals
@@ -189,6 +249,13 @@ pub struct NegateTree {
 }
 
 impl NegateTree {
+    pub fn new(expr_tree: Box<ExpressionTree>, minus_pos: Span) -> Self {
+        Self {
+            expr_tree,
+            minus_pos,
+        }
+    }
+
     pub fn expr_tree(&self) -> &ExpressionTree {
         &self.expr_tree
     }
@@ -211,6 +278,30 @@ pub enum StatementTree {
     BlockTree(BlockTree),
     DeclarationTree(DeclarationTree),
     ReturnTree(ReturnTree),
+}
+
+impl From<AssignmentTree> for StatementTree {
+    fn from(value: AssignmentTree) -> Self {
+        Self::AssignmentTree(value)
+    }
+}
+
+impl From<BlockTree> for StatementTree {
+    fn from(value: BlockTree) -> Self {
+        Self::BlockTree(value)
+    }
+}
+
+impl From<DeclarationTree> for StatementTree {
+    fn from(value: DeclarationTree) -> Self {
+        Self::DeclarationTree(value)
+    }
+}
+
+impl From<ReturnTree> for StatementTree {
+    fn from(value: ReturnTree) -> Self {
+        Self::ReturnTree(value)
+    }
 }
 
 impl HasSpan for StatementTree {
@@ -256,6 +347,14 @@ impl<T, R> Tree<T, R> for AssignmentTree {
 }
 
 impl AssignmentTree {
+    pub fn new(lvalue: LValueTree, operator: Operator, expression: ExpressionTree) -> Self {
+        Self {
+            lvalue,
+            operator,
+            expression,
+        }
+    }
+
     pub fn lvalue(&self) -> &LValueTree {
         &self.lvalue
     }
@@ -271,6 +370,10 @@ pub struct BlockTree {
 }
 
 impl BlockTree {
+    pub fn new(statements: Box<[StatementTree]>, span: Span) -> Self {
+        Self { statements, span }
+    }
+
     pub fn statements(&self) -> &[StatementTree] {
         &self.statements
     }
@@ -295,6 +398,14 @@ pub struct DeclarationTree {
 }
 
 impl DeclarationTree {
+    pub fn new(kind: KindTree, name: NameTree, initializer: Option<ExpressionTree>) -> Self {
+        Self {
+            kind,
+            name,
+            initializer,
+        }
+    }
+
     pub fn kind(&self) -> &KindTree {
         &self.kind
     }
@@ -328,6 +439,15 @@ pub struct KindTree {
     span: Span,
 }
 
+impl KindTree {
+    pub fn new(kind: impl Into<Kind>, span: Span) -> Self {
+        Self {
+            kind: kind.into(),
+            span,
+        }
+    }
+}
+
 impl HasSpan for KindTree {
     fn span(&self) -> Span {
         self.span
@@ -346,6 +466,10 @@ pub struct ReturnTree {
 }
 
 impl ReturnTree {
+    pub fn new(expr: ExpressionTree, start_pos: Position) -> Self {
+        Self { expr, start_pos }
+    }
+
     pub fn expr(&self) -> &ExpressionTree {
         &self.expr
     }
@@ -386,7 +510,7 @@ impl ProgrammTree {
         assert!(!top_level.is_empty(), "must not be empty");
         Self { top_level }
     }
-    
+
     pub fn top_level(&self) -> &[FunctionTree] {
         &self.top_level
     }
@@ -399,14 +523,22 @@ pub struct FunctionTree {
 }
 
 impl FunctionTree {
+    pub fn new(return_type: KindTree, name: NameTree, body: BlockTree) -> Self {
+        Self {
+            return_type,
+            name,
+            body,
+        }
+    }
+
     pub fn return_type(&self) -> &KindTree {
         &self.return_type
     }
-    
+
     pub fn name(&self) -> &NameTree {
         &self.name
     }
-    
+
     pub fn body(&self) -> &BlockTree {
         &self.body
     }

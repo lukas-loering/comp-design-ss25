@@ -132,6 +132,14 @@ impl NumberLiteral {
     pub fn new(value: Box<str>, base: u32, span: Span) -> Self {
         Self { value, base, span }
     }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+
+    pub fn base(&self) -> u32 {
+        self.base
+    }
 }
 
 impl HasSpan for NumberLiteral {

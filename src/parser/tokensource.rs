@@ -33,6 +33,7 @@ impl TokenSource {
         Ok(token)
     }
 
+    #[must_use]
     pub fn expect_keyword(&mut self, kind: KeywordKind) -> Result<Keyword, ParseError> {
         let token = self.peek()?;
         match token {
@@ -44,6 +45,7 @@ impl TokenSource {
         }
     }
 
+    #[must_use]
     pub fn expect_separator(&mut self, kind: SeparatorKind) -> Result<Separator, ParseError> {
         let token = self.peek()?;
         match token {
@@ -55,6 +57,7 @@ impl TokenSource {
         }
     }
 
+    #[must_use]
     pub fn expect_operator(&mut self, kind: OperatorKind) -> Result<Operator, ParseError> {
         let token = self.peek()?;
         match token {
@@ -66,6 +69,7 @@ impl TokenSource {
         }
     }
 
+    #[must_use]
     pub fn expect_identifier(&mut self) -> Result<Identifier, ParseError> {
         let token = self.peek()?;
         match token {
