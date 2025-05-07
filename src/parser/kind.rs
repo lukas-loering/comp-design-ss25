@@ -1,5 +1,11 @@
 use std::fmt::Display;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum NumericBase {
+    Decimal,
+    Hex,
+}
+
 #[derive(Debug, Clone)]
 pub enum Kind {
     Basic(BasicKind),

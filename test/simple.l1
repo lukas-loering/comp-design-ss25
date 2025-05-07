@@ -1,7 +1,7 @@
 // starts with a comment
 int main() {
     int x;
-    int y = 42;
+    y = -42;
     int z = 0x1A3F;
     /* this is a multiline comment */
     x = y + z;

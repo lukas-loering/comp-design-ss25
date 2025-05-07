@@ -4,8 +4,9 @@ use ast::{
     ReturnTree, StatementTree,
 };
 
-pub use ast::ProgrammTree;
+pub use ast::{ProgrammTree, Tree};
 use kind::BasicKind;
+pub use kind::NumericBase;
 use symbol::Name;
 pub use tokensource::TokenSource;
 use tracing::debug;
@@ -15,11 +16,11 @@ use crate::{
     span::HasSpan,
 };
 
-mod ast;
+pub mod ast;
 mod kind;
-mod symbol;
+pub mod symbol;
 mod tokensource;
-mod visitor;
+pub mod visitor;
 
 #[derive(Debug, Clone, thiserror::Error)]
 #[non_exhaustive]

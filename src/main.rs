@@ -4,11 +4,13 @@ use std::{error::Error, path::PathBuf};
 use crow::CrowExitCodes;
 use lexer::{Lexer, tokens::Token};
 use parser::{ParseResult, Parser, ProgrammTree, TokenSource};
+use semantic::SemanticAnalysis;
 use tracing::Level;
 
 mod crow;
 mod lexer;
 mod parser;
+mod semantic;
 mod span;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -29,7 +31,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         eprintln!("file {} not found", input.display());
         std::process::exit(3)
     };
-    lex_and_parse(source)?;
+    let programm = lex_and_parse(source)?;
+    let mut semantic = SemanticAnalysis::new(programm);
+    semantic.analyze()?;
     Ok(())
 }
 

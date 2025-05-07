@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
-use crate::span::{HasSpan, Span};
+use crate::{
+    parser::NumericBase,
+    span::{HasSpan, Span},
+};
 
 #[derive(Debug, Clone)]
 pub enum Token {
@@ -124,12 +127,12 @@ impl From<ErrorToken> for Token {
 #[derive(Debug, Clone)]
 pub struct NumberLiteral {
     value: Box<str>,
-    base: u32,
+    base: NumericBase,
     span: Span,
 }
 
 impl NumberLiteral {
-    pub fn new(value: Box<str>, base: u32, span: Span) -> Self {
+    pub fn new(value: Box<str>, base: NumericBase, span: Span) -> Self {
         Self { value, base, span }
     }
 
@@ -137,7 +140,7 @@ impl NumberLiteral {
         &self.value
     }
 
-    pub fn base(&self) -> u32 {
+    pub fn base(&self) -> NumericBase {
         self.base
     }
 }

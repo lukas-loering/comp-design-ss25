@@ -3,10 +3,14 @@ use crate::{
     span::{HasSpan, Position, Span},
 };
 
-use super::{kind::Kind, symbol::Name, visitor::Visitor};
+use super::{
+    kind::{Kind, NumericBase},
+    symbol::Name,
+    visitor::Visitor,
+};
 
-pub trait Tree<T, R>: HasSpan {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R;
+pub trait Tree<T, R, E>: HasSpan {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E>;
 }
 
 pub enum LValueTree {
@@ -27,8 +31,8 @@ impl HasSpan for LValueTree {
     }
 }
 
-impl<T, R> Tree<T, R> for LValueTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+impl<T, R, E> Tree<T, R, E> for LValueTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E> {
         match self {
             LValueTree::LValueIdentTree(lvalue_ident_tree) => {
                 lvalue_ident_tree.accept(visitor, data)
@@ -45,6 +49,10 @@ pub struct NameTree {
 impl NameTree {
     pub fn new(name: Name, span: Span) -> Self {
         Self { name, span }
+    }
+
+    pub fn name(&self) -> &Name {
+        &self.name
     }
 }
 
@@ -68,8 +76,8 @@ impl LValueIdentTree {
     }
 }
 
-impl<T, R> Tree<T, R> for NameTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+impl<T, R, E> Tree<T, R, E> for NameTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E> {
         visitor.visit_name(self, data)
     }
 }
@@ -80,8 +88,8 @@ impl HasSpan for LValueIdentTree {
     }
 }
 
-impl<T, R> Tree<T, R> for LValueIdentTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+impl<T, R, E> Tree<T, R, E> for LValueIdentTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E> {
         visitor.visit_lvalue_ident(self, data)
     }
 }
@@ -128,8 +136,8 @@ impl HasSpan for ExpressionTree {
     }
 }
 
-impl<T, R> Tree<T, R> for ExpressionTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+impl<T, R, E> Tree<T, R, E> for ExpressionTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E> {
         match self {
             ExpressionTree::BinaryOpTree(binary_op_tree) => binary_op_tree.accept(visitor, data),
             ExpressionTree::IdentExprTree(ident_expr_tree) => ident_expr_tree.accept(visitor, data),
@@ -173,8 +181,8 @@ impl HasSpan for BinaryOpTree {
     }
 }
 
-impl<T, R> Tree<T, R> for BinaryOpTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+impl<T, R, E> Tree<T, R, E> for BinaryOpTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E> {
         visitor.visit_binary_op(self, data)
     }
 }
@@ -198,15 +206,15 @@ impl HasSpan for IdentExprTree {
     }
 }
 
-impl<T, R> Tree<T, R> for IdentExprTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+impl<T, R, E> Tree<T, R, E> for IdentExprTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E> {
         visitor.visit_ident_expr(self, data)
     }
 }
 
 pub struct LiteralTree {
     value: Box<str>,
-    base: u32,
+    base: NumericBase,
     span: Span,
 }
 
@@ -216,30 +224,42 @@ impl HasSpan for LiteralTree {
     }
 }
 
-impl<T, R> Tree<T, R> for LiteralTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+impl<T, R, E> Tree<T, R, E> for LiteralTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E> {
         visitor.visit_literal(self, data)
     }
 }
 
 impl LiteralTree {
-    pub fn new(value: Box<str>, base: u32, span: Span) -> Self {
+    pub fn new(value: Box<str>, base: NumericBase, span: Span) -> Self {
         Self { value, base, span }
     }
 
     pub fn parse_value(&self) -> Option<i64> {
-        let value = if self.base == 16 {
-            // skip the `0x` prefix of hex literals
-            &self.value[2..]
-        } else {
-            &self.value
-        };
+        match self.base {
+            NumericBase::Decimal => Self::parse_dec(&self.value),
+            NumericBase::Hex => {
+                // skip the `0x` prefix of hex literals
+                Self::parse_hex(&self.value[2..])
+            }
+        }
+    }
+
+    fn parse_dec(value: &str) -> Option<i64> {
         let value = value.parse::<i64>().ok()?;
         // bounds check, we only want non-negative 32-bit integers (for now)
         if value < 0 || value > i32::MAX.into() {
             return None;
         }
         Some(value)
+    }
+
+    fn parse_hex(value: &str) -> Option<i64> {
+        i64::from_str_radix(value, 16).ok()
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
     }
 }
 
@@ -267,8 +287,8 @@ impl HasSpan for NegateTree {
     }
 }
 
-impl<T, R> Tree<T, R> for NegateTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+impl<T, R, E> Tree<T, R, E> for NegateTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E> {
         visitor.visit_negate(self, data)
     }
 }
@@ -315,8 +335,8 @@ impl HasSpan for StatementTree {
     }
 }
 
-impl<T, R> Tree<T, R> for StatementTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+impl<T, R, E> Tree<T, R, E> for StatementTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E> {
         match self {
             StatementTree::AssignmentTree(assignment_tree) => assignment_tree.accept(visitor, data),
             StatementTree::BlockTree(block_tree) => block_tree.accept(visitor, data),
@@ -340,8 +360,8 @@ impl HasSpan for AssignmentTree {
     }
 }
 
-impl<T, R> Tree<T, R> for AssignmentTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+impl<T, R, E> Tree<T, R, E> for AssignmentTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E> {
         visitor.visit_assignment(self, data)
     }
 }
@@ -385,8 +405,8 @@ impl HasSpan for BlockTree {
     }
 }
 
-impl<T, R> Tree<T, R> for BlockTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+impl<T, R, E> Tree<T, R, E> for BlockTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E> {
         visitor.visit_block(self, data)
     }
 }
@@ -428,8 +448,8 @@ impl HasSpan for DeclarationTree {
     }
 }
 
-impl<T, R> Tree<T, R> for DeclarationTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+impl<T, R, E> Tree<T, R, E> for DeclarationTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E> {
         visitor.visit_declaration(self, data)
     }
 }
@@ -454,8 +474,8 @@ impl HasSpan for KindTree {
     }
 }
 
-impl<T, R> Tree<T, R> for KindTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+impl<T, R, E> Tree<T, R, E> for KindTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E> {
         visitor.visit_kind(self, data)
     }
 }
@@ -481,8 +501,8 @@ impl HasSpan for ReturnTree {
     }
 }
 
-impl<T, R> Tree<T, R> for ReturnTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+impl<T, R, E> Tree<T, R, E> for ReturnTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E> {
         visitor.visit_return(self, data)
     }
 }
@@ -499,8 +519,8 @@ impl HasSpan for ProgrammTree {
     }
 }
 
-impl<T, R> Tree<T, R> for ProgrammTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+impl<T, R, E> Tree<T, R, E> for ProgrammTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E> {
         visitor.visit_programm(self, data)
     }
 }
@@ -550,8 +570,8 @@ impl HasSpan for FunctionTree {
     }
 }
 
-impl<T, R> Tree<T, R> for FunctionTree {
-    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+impl<T, R, E> Tree<T, R, E> for FunctionTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E> {
         visitor.visit_function(self, data)
     }
 }

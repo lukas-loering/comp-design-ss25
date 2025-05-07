@@ -3,7 +3,10 @@ pub mod tokens;
 use tracing::trace;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::span::{Position, Span};
+use crate::{
+    parser::NumericBase,
+    span::{Position, Span},
+};
 use derive_more::Debug;
 
 use self::tokens::*;
@@ -111,7 +114,7 @@ impl<'s> Lexer<'s> {
         operator.into()
     }
 
-     #[tracing::instrument]
+    #[tracing::instrument]
     fn skip_whitespace(&mut self) -> Option<ErrorToken> {
         #[derive(Copy, Clone, PartialEq, Eq)]
         enum CommentKind {
@@ -130,7 +133,7 @@ impl<'s> Lexer<'s> {
                 " " | "\t" => {
                     trace!("space or tab");
                     self.pos += 1
-                },
+                }
                 "\n" | "\r" => {
                     trace!("new line");
                     self.pos += 1;
@@ -253,7 +256,7 @@ impl<'s> Lexer<'s> {
                 // `0x` without any more digits -> an error
                 return ErrorToken::new(value, "orphaned `0x`".into(), span).into();
             }
-            return NumberLiteral::new(value, 16, span).into();
+            return NumberLiteral::new(value, NumericBase::Hex, span).into();
         }
         // not a hex digit, parse base 10
         let mut offset = 1;
@@ -271,7 +274,7 @@ impl<'s> Lexer<'s> {
         }
         return NumberLiteral::new(
             self.get_value(offset).into_boxed_str(),
-            10,
+            NumericBase::Decimal,
             self.build_span(offset),
         )
         .into();

@@ -1,5 +1,5 @@
 use crate::lexer::tokens::{Identifier, Keyword};
-
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Name {
     name: Box<str>,
 }
