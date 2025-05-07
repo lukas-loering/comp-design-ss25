@@ -46,6 +46,18 @@ pub struct LValueIdentTree {
     name: NameTree,
 }
 
+impl LValueIdentTree {
+    pub fn name(&self) -> &NameTree {
+        &self.name
+    }
+}
+
+impl<T, R> Tree<T, R> for NameTree {
+    fn accept(&self, visitor: &dyn Visitor<T, R>, data: &mut T) -> R {
+        visitor.visit_name(self, data)
+    }
+}
+
 impl HasSpan for LValueIdentTree {
     fn span(&self) -> Span {
         self.name.span()
@@ -118,6 +130,12 @@ pub struct IdentExprTree {
     name: NameTree,
 }
 
+impl IdentExprTree {
+    pub fn name(&self) -> &NameTree {
+        &self.name
+    }
+}
+
 impl HasSpan for IdentExprTree {
     fn span(&self) -> Span {
         self.name.span()
@@ -168,6 +186,12 @@ impl LiteralTree {
 pub struct NegateTree {
     expr_tree: Box<ExpressionTree>,
     minus_pos: Span,
+}
+
+impl NegateTree {
+    pub fn expr_tree(&self) -> &ExpressionTree {
+        &self.expr_tree
+    }
 }
 
 impl HasSpan for NegateTree {
@@ -270,6 +294,20 @@ pub struct DeclarationTree {
     initializer: Option<ExpressionTree>,
 }
 
+impl DeclarationTree {
+    pub fn kind(&self) -> &KindTree {
+        &self.kind
+    }
+
+    pub fn name(&self) -> &NameTree {
+        &self.name
+    }
+
+    pub fn initializer(&self) -> Option<&ExpressionTree> {
+        self.initializer.as_ref()
+    }
+}
+
 impl HasSpan for DeclarationTree {
     fn span(&self) -> Span {
         match &self.initializer {
@@ -307,6 +345,12 @@ pub struct ReturnTree {
     start_pos: Position,
 }
 
+impl ReturnTree {
+    pub fn expr(&self) -> &ExpressionTree {
+        &self.expr
+    }
+}
+
 impl HasSpan for ReturnTree {
     fn span(&self) -> Span {
         Span::new(self.start_pos, self.expr.span().end())
@@ -342,12 +386,30 @@ impl ProgrammTree {
         assert!(!top_level.is_empty(), "must not be empty");
         Self { top_level }
     }
+    
+    pub fn top_level(&self) -> &[FunctionTree] {
+        &self.top_level
+    }
 }
 
 pub struct FunctionTree {
     return_type: KindTree,
     name: NameTree,
     body: BlockTree,
+}
+
+impl FunctionTree {
+    pub fn return_type(&self) -> &KindTree {
+        &self.return_type
+    }
+    
+    pub fn name(&self) -> &NameTree {
+        &self.name
+    }
+    
+    pub fn body(&self) -> &BlockTree {
+        &self.body
+    }
 }
 
 impl HasSpan for FunctionTree {
