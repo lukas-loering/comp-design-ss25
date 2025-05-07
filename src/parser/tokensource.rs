@@ -37,7 +37,10 @@ impl TokenSource {
     pub fn expect_keyword(&mut self, kind: KeywordKind) -> Result<Keyword, ParseError> {
         let token = self.peek()?;
         match token {
-            Token::Keyword(k) if k.kind() == kind => Ok(k),
+            Token::Keyword(k) if k.kind() == kind => {
+                self.idx += 1;
+                Ok(k)
+            }
             _ => Err(ParseError::ExpectedKeyword {
                 expected: kind,
                 got: token,
@@ -49,7 +52,10 @@ impl TokenSource {
     pub fn expect_separator(&mut self, kind: SeparatorKind) -> Result<Separator, ParseError> {
         let token = self.peek()?;
         match token {
-            Token::Separator(s) if s.kind() == kind => Ok(s),
+            Token::Separator(s) if s.kind() == kind => {
+                self.idx += 1;
+                Ok(s)
+            }
             _ => Err(ParseError::ExpectedSeparator {
                 expected: kind,
                 got: token,
@@ -61,7 +67,10 @@ impl TokenSource {
     pub fn expect_operator(&mut self, kind: OperatorKind) -> Result<Operator, ParseError> {
         let token = self.peek()?;
         match token {
-            Token::Operator(o) if o.kind() == kind => Ok(o),
+            Token::Operator(o) if o.kind() == kind => {
+                self.idx += 1;
+                Ok(o)
+            },
             _ => Err(ParseError::ExpectedOperator {
                 expected: kind,
                 got: token,
@@ -73,7 +82,10 @@ impl TokenSource {
     pub fn expect_identifier(&mut self) -> Result<Identifier, ParseError> {
         let token = self.peek()?;
         match token {
-            Token::Identifier(i) => Ok(i),
+            Token::Identifier(i) => {
+                self.idx += 1;
+                Ok(i)
+            },
             _ => Err(ParseError::ExpectedIdentifier { got: token }),
         }
     }

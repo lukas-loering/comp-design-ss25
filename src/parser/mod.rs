@@ -1,11 +1,14 @@
 use ast::{
     AssignmentTree, BinaryOpTree, BlockTree, DeclarationTree, ExpressionTree, FunctionTree,
     IdentExprTree, KindTree, LValueIdentTree, LValueTree, LiteralTree, NameTree, NegateTree,
-    ProgrammTree, ReturnTree, StatementTree,
+    ReturnTree, StatementTree,
 };
+
+pub use ast::ProgrammTree;
 use kind::BasicKind;
 use symbol::Name;
-use tokensource::TokenSource;
+pub use tokensource::TokenSource;
+use tracing::debug;
 
 use crate::{
     lexer::tokens::{Identifier, KeywordKind, Operator, OperatorKind, SeparatorKind, Token},
@@ -20,7 +23,7 @@ mod visitor;
 
 #[derive(Debug, Clone, thiserror::Error)]
 #[non_exhaustive]
-enum ParseError {
+pub enum ParseError {
     #[error("expected operator {expected} got {got}")]
     ExpectedOperator { expected: OperatorKind, got: Token },
     #[error("expected assignment got {got}")]
@@ -38,24 +41,26 @@ enum ParseError {
 }
 
 #[derive(Debug, Clone)]
-struct Parser {
+pub struct Parser {
     tokens: TokenSource,
 }
 
-type ParseResult<T> = Result<T, ParseError>;
+pub type ParseResult<T> = Result<T, ParseError>;
 
 impl Parser {
     pub fn new(tokens: TokenSource) -> Self {
         Self { tokens }
     }
-
+    #[tracing::instrument(skip(self))]
     pub fn parse_programm(&mut self) -> ParseResult<ProgrammTree> {
+        debug!("parsing programm");
         Ok(ProgrammTree::new([self.parse_function()?].into()))
     }
 }
 
 impl Parser {
     fn parse_function(&mut self) -> ParseResult<FunctionTree> {
+        debug!("parsing function");
         let return_type = self.tokens.expect_keyword(KeywordKind::Int)?;
         let ident = self.tokens.expect_identifier()?;
         self.tokens.expect_separator(SeparatorKind::ParenOpen)?;
@@ -69,6 +74,7 @@ impl Parser {
     }
 
     fn parse_block(&mut self) -> ParseResult<BlockTree> {
+        debug!("parsing block");
         let body_open = self.tokens.expect_separator(SeparatorKind::BraceOpen)?;
         let mut statements = vec![];
         loop {
@@ -87,6 +93,7 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> ParseResult<StatementTree> {
+        debug!("parsing statement");
         let statement = if self.tokens.peek()?.is_keyword(KeywordKind::Int) {
             self.parse_declaration()?.into()
         } else if self.tokens.peek()?.is_keyword(KeywordKind::Return) {
@@ -99,6 +106,7 @@ impl Parser {
     }
 
     fn parse_declaration(&mut self) -> ParseResult<DeclarationTree> {
+        debug!("parsing declaration");
         let kind = self.tokens.expect_keyword(KeywordKind::Int)?;
         let ident = self.tokens.expect_identifier()?;
         let expr = if self.tokens.peek()?.is_operator(OperatorKind::Assign) {
@@ -116,6 +124,7 @@ impl Parser {
     }
 
     fn parse_simple(&mut self) -> ParseResult<AssignmentTree> {
+        debug!("parsing simple assignment");
         let lvalue = self.parse_lvalue()?;
         let assignment_op = self.parse_assignment_op()?;
         let expr = self.parse_expr()?;
@@ -124,12 +133,14 @@ impl Parser {
     }
 
     fn parse_return(&mut self) -> ParseResult<ReturnTree> {
+        debug!("parsing return");
         let ret = self.tokens.expect_keyword(KeywordKind::Return)?;
         let expr = self.parse_expr()?;
         Ok(ReturnTree::new(expr, ret.span().start()))
     }
 
     fn parse_expr(&mut self) -> ParseResult<ExpressionTree> {
+        debug!("parsing expression");
         let mut lhs = self.parse_term()?;
         loop {
             let token = self.tokens.peek()?;
@@ -149,6 +160,7 @@ impl Parser {
     }
 
     fn parse_lvalue(&mut self) -> ParseResult<LValueTree> {
+        debug!("parsing lvalue");
         if self.tokens.peek()?.is_separator(SeparatorKind::ParenOpen) {
             self.tokens.expect_separator(SeparatorKind::ParenOpen)?;
             let inner = self.parse_lvalue()?;
@@ -162,6 +174,7 @@ impl Parser {
     }
 
     fn parse_term(&mut self) -> ParseResult<ExpressionTree> {
+        debug!("parsing termm");
         let mut lhs = self.parse_factor()?;
         loop {
             let token = self.tokens.peek()?;
@@ -182,6 +195,7 @@ impl Parser {
     }
 
     fn parse_factor(&mut self) -> ParseResult<ExpressionTree> {
+        debug!("parsing factor");
         match self.tokens.peek()? {
             Token::Separator(separator) if separator.kind() == SeparatorKind::ParenOpen => {
                 self.tokens.consume()?;
@@ -213,6 +227,7 @@ impl Parser {
     }
 
     fn parse_assignment_op(&mut self) -> ParseResult<Operator> {
+        debug!("parsing assignment operator");
         let token = self.tokens.peek()?;
         let Token::Operator(operator) = token else {
             return Err(ParseError::ExpectedAssignment { got: token });

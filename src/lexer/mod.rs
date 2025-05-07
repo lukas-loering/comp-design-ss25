@@ -1,14 +1,17 @@
 pub mod tokens;
 
+use tracing::trace;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::span::{Position, Span};
+use derive_more::Debug;
 
 use self::tokens::*;
 
 #[derive(Debug, Clone)]
 pub struct Lexer<'s> {
     /// the grapheme clusteres of a source
+    #[debug(skip)]
     source: Vec<&'s str>,
     /// the currently indexed cluster
     pos: usize,
@@ -49,11 +52,15 @@ impl<'s> Lexer<'s> {
         }
     }
 
+    #[tracing::instrument]
     pub fn next_token(&mut self) -> Option<Token> {
         if let Some(error_token) = self.skip_whitespace().map(Token::from) {
+            trace!("found error token");
             return Some(error_token);
         };
+        trace!("skipped whitespace");
         if self.pos >= self.source.len() {
+            trace!("read to/past end of source");
             return None;
         };
         let token = match self.peek(0) {
@@ -87,11 +94,15 @@ impl<'s> Lexer<'s> {
         Some(token)
     }
 
+    #[tracing::instrument]
     fn lex_separator(&mut self, separator_kind: SeparatorKind) -> Token {
+        trace!("lex separator");
         Separator::new(separator_kind, self.build_span(1)).into()
     }
 
+    #[tracing::instrument]
     fn lex_single_or_assign(&mut self, single: OperatorKind, assign: OperatorKind) -> Token {
+        trace!("lex single or assign");
         let operator = if self.has_more(1) && self.peek(1) == "=" {
             Operator::new(assign, self.build_span(2))
         } else {
@@ -100,6 +111,7 @@ impl<'s> Lexer<'s> {
         operator.into()
     }
 
+     #[tracing::instrument]
     fn skip_whitespace(&mut self) -> Option<ErrorToken> {
         #[derive(Copy, Clone, PartialEq, Eq)]
         enum CommentKind {
@@ -108,30 +120,36 @@ impl<'s> Lexer<'s> {
             MultiLine,
         }
 
+        trace!("skip whitespace");
         let mut comment = CommentKind::None;
         let mut comment_start = 0usize;
         let mut multi_line_depth = 0usize;
 
         while self.has_more(0) {
             match self.peek(0) {
-                " " | "\t" => self.pos += 1,
+                " " | "\t" => {
+                    trace!("space or tab");
+                    self.pos += 1
+                },
                 "\n" | "\r" => {
+                    trace!("new line");
                     self.pos += 1;
                     self.line_start = self.pos;
                     self.line += 1;
                     // we have moved to the next line, so unset comment state if we were on a single line comment
-                    if matches!(comment, CommentKind::SingleLine) {
+                    if comment == CommentKind::SingleLine {
                         comment = CommentKind::None;
                     }
                 }
                 "/" => {
-                    if matches!(comment, CommentKind::SingleLine) {
+                    trace!("fwd slash");
+                    if comment == CommentKind::SingleLine {
                         self.pos += 1;
                         continue;
                     };
                     // Detect Comments
                     if self.has_more(1) {
-                        if self.peek(1) == "/" && matches!(comment, CommentKind::None) {
+                        if self.peek(1) == "/" && comment == CommentKind::None {
                             comment = CommentKind::SingleLine;
                         } else if self.peek(1) == "*" {
                             comment = CommentKind::MultiLine;
@@ -152,6 +170,7 @@ impl<'s> Lexer<'s> {
                     return None;
                 }
                 _ => {
+                    trace!("other");
                     match comment {
                         CommentKind::None => return None,
                         CommentKind::SingleLine => {
@@ -166,6 +185,8 @@ impl<'s> Lexer<'s> {
                                 multi_line_depth -= 1;
                                 if multi_line_depth == 0 {
                                     comment = CommentKind::None;
+                                } else {
+                                    comment = CommentKind::MultiLine;
                                 }
                             } else {
                                 self.pos += 1;
@@ -188,6 +209,11 @@ impl<'s> Lexer<'s> {
     }
 
     fn has_more(&self, offset: usize) -> bool {
+        trace!(
+            "has more? pos: {}, len: {}",
+            self.pos + offset,
+            self.source.len()
+        );
         return self.pos + offset < self.source.len();
     }
 
@@ -258,4 +284,18 @@ impl<'s> Lexer<'s> {
     fn get_value(&self, offset: usize) -> String {
         self.source[self.pos..self.pos + offset].concat()
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Lexer;
+
+    // #[test]
+    // fn lex_assignment() {
+    //     let s = "
+    //     foo = bar + 5;
+    //     ";
+    //     let mut l = Lexer::new(s);
+    //     assert_eq!(Some(l.next())
+    // }
 }

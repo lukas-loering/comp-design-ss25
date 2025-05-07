@@ -1,15 +1,21 @@
 #![allow(unused)]
-use std::path::PathBuf;
+use std::{error::Error, path::PathBuf};
 
 use crow::CrowExitCodes;
 use lexer::{Lexer, tokens::Token};
+use parser::{ParseResult, Parser, ProgrammTree, TokenSource};
+use tracing::Level;
 
 mod crow;
 mod lexer;
 mod parser;
 mod span;
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
+    let subscriber = tracing_subscriber::FmtSubscriber::builder()
+        .with_max_level(Level::DEBUG)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
     let mut args = std::env::args();
     // the first arg is the programm name
     if args.len() != 3 {
@@ -23,19 +29,12 @@ fn main() {
         eprintln!("file {} not found", input.display());
         std::process::exit(3)
     };
-    lex_and_parse(source);
+    lex_and_parse(source)?;
+    Ok(())
 }
 
-pub fn lex_and_parse(source: String) -> () {
+pub fn lex_and_parse(source: String) -> ParseResult<ProgrammTree> {
     let mut lexer = Lexer::new(source.as_str());
-    let mut tokens = vec![];
-    while let Some(token) = lexer.next_token() {
-        if matches!(token, Token::ErrorToken { .. }) {
-            eprintln!("ERR: {token:#?}");
-            std::process::exit(CrowExitCodes::ParsingErr.into())
-        }
-        println!("{token}");
-        tokens.push(token);
-    }
-    println!("{tokens:#?}")
+    let mut parser = Parser::new(TokenSource::new(lexer));
+    parser.parse_programm()
 }

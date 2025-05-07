@@ -1,4 +1,4 @@
-// this is the main entry point
+// starts with a comment
 int main() {
     int x;
     int y = 42;
@@ -7,7 +7,7 @@ int main() {
     x = y + z;
     y += 10;
     /* this is a multiline comment 
-    it can span multiple lines*/
+    it can span multiple lines */
     z = -x * (y - 3);
     return x;
 }
