@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use integerrange::IntegerLiteralRangeAnalysis;
 use namespace::Namespace;
+use r#return::ReturnAnalysis;
+use r#return::ReturnState;
 use thiserror::Error;
 use tracing::info;
 use variablestatus::VariableState;
@@ -18,6 +20,7 @@ use crate::parser::visitor::Visitor;
 
 mod integerrange;
 mod namespace;
+mod r#return;
 mod variablestatus;
 
 #[derive(Debug, Error)]
@@ -32,6 +35,12 @@ pub enum SemanticError {
         existing: Box<str>,
         replacement: Box<str>,
     },
+    #[error("variable `{0}` must be initialized before use")]
+    UnitializedVariableUse(Box<str>),
+    #[error("variable `{0}` was declared more than once")]
+    MultipleVariableDeclarations(Box<str>),
+    #[error("function `{0}` never returns")]
+    NoReturn(Box<str>),
 }
 
 type SemanticResult<T> = Result<T, SemanticError>;
@@ -50,24 +59,37 @@ impl SemanticAnalysis {
         info!("integer literal range analysis");
         self.integer_literal_range_analysis()?;
         info!("variable statusanalysis");
-        self.variable_status_analysis()
+        self.variable_status_analysis()?;
+        info!("return analysis");
+        self.return_analysis()?;
+        info!("semantic analysis completed");
+        Ok(())
     }
 
     fn integer_literal_range_analysis(&mut self) -> Result<(), SemanticError> {
-        let inner: Box<dyn Visitor<Namespace<()>, SemanticResult<()>>> =
+        let inner: Box<dyn Visitor<Namespace<()>, (), SemanticError>> =
             Box::new(IntegerLiteralRangeAnalysis::new());
-        let outer: Box<dyn Visitor<Namespace<()>, SemanticResult<()>>> =
+        let outer: Box<dyn Visitor<Namespace<()>, (), SemanticError>> =
             Box::new(RecursivePostOrderVisitor::new(inner));
         let mut namespace = Namespace::new();
         self.program.accept(outer.as_ref(), &mut namespace)
     }
 
     fn variable_status_analysis(&mut self) -> Result<(), SemanticError> {
-        let inner: Box<dyn Visitor<Namespace<VariableState>, SemanticResult<()>>> =
+        let inner: Box<dyn Visitor<Namespace<VariableState>, (), SemanticError>> =
             Box::new(VariableStatusAnalysis::new());
-        let outer: Box<dyn Visitor<Namespace<VariableState>, SemanticResult<()>>> =
+        let outer: Box<dyn Visitor<Namespace<VariableState>, (), SemanticError>> =
             Box::new(RecursivePostOrderVisitor::new(inner));
         let mut namespace = Namespace::new();
         self.program.accept(outer.as_ref(), &mut namespace)
+    }
+
+    fn return_analysis(&mut self) -> Result<(), SemanticError> {
+        let inner: Box<dyn Visitor<ReturnState, (), SemanticError>> =
+            Box::new(ReturnAnalysis::new());
+        let outer: Box<dyn Visitor<ReturnState, (), SemanticError>> =
+            Box::new(RecursivePostOrderVisitor::new(inner));
+        let mut returns = ReturnState::new();
+        self.program.accept(outer.as_ref(), &mut returns)
     }
 }
