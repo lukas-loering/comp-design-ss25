@@ -19,7 +19,7 @@ impl IntegerLiteralRangeAnalysis {
     }
 }
 
-impl Visitor<Namespace<()>, Result<(), SemanticError>> for IntegerLiteralRangeAnalysis {
+impl Visitor<Namespace<()>, (), SemanticError> for IntegerLiteralRangeAnalysis {
     fn visit_assignment(
         &self,
         tree: &crate::parser::ast::AssignmentTree,
@@ -27,7 +27,8 @@ impl Visitor<Namespace<()>, Result<(), SemanticError>> for IntegerLiteralRangeAn
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<()>, (), SemanticError> as Visitor<
             Namespace<()>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_assignment(&self.no_op, tree, data)
     }
 
@@ -38,7 +39,8 @@ impl Visitor<Namespace<()>, Result<(), SemanticError>> for IntegerLiteralRangeAn
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<()>, (), SemanticError> as Visitor<
             Namespace<()>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_binary_op(&self.no_op, tree, data)
     }
 
@@ -49,7 +51,8 @@ impl Visitor<Namespace<()>, Result<(), SemanticError>> for IntegerLiteralRangeAn
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<()>, (), SemanticError> as Visitor<
             Namespace<()>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_block(&self.no_op, tree, data)
     }
 
@@ -60,7 +63,8 @@ impl Visitor<Namespace<()>, Result<(), SemanticError>> for IntegerLiteralRangeAn
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<()>, (), SemanticError> as Visitor<
             Namespace<()>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_declaration(&self.no_op, tree, data)
     }
 
@@ -71,7 +75,8 @@ impl Visitor<Namespace<()>, Result<(), SemanticError>> for IntegerLiteralRangeAn
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<()>, (), SemanticError> as Visitor<
             Namespace<()>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_function(&self.no_op, tree, data)
     }
 
@@ -82,7 +87,8 @@ impl Visitor<Namespace<()>, Result<(), SemanticError>> for IntegerLiteralRangeAn
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<()>, (), SemanticError> as Visitor<
             Namespace<()>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_ident_expr(&self.no_op, tree, data)
     }
 
@@ -106,14 +112,16 @@ impl Visitor<Namespace<()>, Result<(), SemanticError>> for IntegerLiteralRangeAn
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<()>, (), SemanticError> as Visitor<
             Namespace<()>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_lvalue_ident(&self.no_op, tree, data)
     }
 
     fn visit_name(&self, tree: &NameTree, data: &mut Namespace<()>) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<()>, (), SemanticError> as Visitor<
             Namespace<()>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_name(&self.no_op, tree, data)
     }
 
@@ -124,7 +132,8 @@ impl Visitor<Namespace<()>, Result<(), SemanticError>> for IntegerLiteralRangeAn
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<()>, (), SemanticError> as Visitor<
             Namespace<()>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_negate(&self.no_op, tree, data)
     }
 
@@ -135,7 +144,8 @@ impl Visitor<Namespace<()>, Result<(), SemanticError>> for IntegerLiteralRangeAn
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<()>, (), SemanticError> as Visitor<
             Namespace<()>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_programm(&self.no_op, tree, data)
     }
 
@@ -146,7 +156,8 @@ impl Visitor<Namespace<()>, Result<(), SemanticError>> for IntegerLiteralRangeAn
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<()>, (), SemanticError> as Visitor<
             Namespace<()>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_return(&self.no_op, tree, data)
     }
 
@@ -157,7 +168,8 @@ impl Visitor<Namespace<()>, Result<(), SemanticError>> for IntegerLiteralRangeAn
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<()>, (), SemanticError> as Visitor<
             Namespace<()>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_kind(&self.no_op, tree, data)
     }
 }

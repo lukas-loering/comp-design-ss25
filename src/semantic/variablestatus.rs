@@ -34,18 +34,58 @@ impl VariableStatusAnalysis {
         }
     }
 
-    fn expect_intialized(name: &NameTree, var_state: Option<VariableState>) -> SemanticResult<()> {
-        if var_state.is_none() {
-            Err(SemanticError::AssignedUndeclaredVariable(
+    fn expect_undeclared(name: &NameTree, var_state: Option<VariableState>) -> SemanticResult<()> {
+        if var_state.is_some() {
+            Err(SemanticError::MultipleVariableDeclarations(
                 name.name().name().into(),
             ))
         } else {
             Ok(())
         }
     }
+
+    fn expect_declared(
+        name: &NameTree,
+        var_state: Option<VariableState>,
+    ) -> SemanticResult<VariableState> {
+        match var_state {
+            Some(s) => Ok(s),
+            None => Err(SemanticError::AssignedUndeclaredVariable(
+                name.name().name().into(),
+            )),
+        }
+    }
+
+    fn expect_intialized(name: &NameTree, state: Option<VariableState>) -> SemanticResult<()> {
+        if matches!(state, None | Some(VariableState::Declared)) {
+            Err(SemanticError::UnitializedVariableUse(
+                name.name().name().into(),
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn update_state(
+        data: &mut Namespace<VariableState>,
+        state: VariableState,
+        name: &NameTree,
+    ) -> SemanticResult<()> {
+        data.put(name, state, |existing, replacement| {
+            if *existing > replacement {
+                Err(SemanticError::InvalidVariableState {
+                    variable: name.name().name().into(),
+                    existing: existing.to_string().into_boxed_str(),
+                    replacement: replacement.to_string().into_boxed_str(),
+                })
+            } else {
+                Ok(replacement)
+            }
+        })
+    }
 }
 
-impl Visitor<Namespace<VariableState>, Result<(), SemanticError>> for VariableStatusAnalysis {
+impl Visitor<Namespace<VariableState>, (), SemanticError> for VariableStatusAnalysis {
     fn visit_assignment(
         &self,
         tree: &crate::parser::ast::AssignmentTree,
@@ -55,7 +95,10 @@ impl Visitor<Namespace<VariableState>, Result<(), SemanticError>> for VariableSt
             crate::parser::ast::LValueTree::LValueIdentTree(lvalue_ident_tree) => {
                 let name = lvalue_ident_tree.name();
                 let state = data.get(name);
-                VariableStatusAnalysis::expect_intialized(name, state)?;
+                let state = VariableStatusAnalysis::expect_declared(name, state)?;
+                if state != VariableState::Initialized {
+                    Self::update_state(data, VariableState::Initialized, name);
+                }
             }
         }
         self.no_op.visit_assignment(tree, data)
@@ -68,7 +111,8 @@ impl Visitor<Namespace<VariableState>, Result<(), SemanticError>> for VariableSt
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<VariableState>, (), SemanticError> as Visitor<
             Namespace<VariableState>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_binary_op(&self.no_op, tree, data)
     }
 
@@ -79,7 +123,8 @@ impl Visitor<Namespace<VariableState>, Result<(), SemanticError>> for VariableSt
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<VariableState>, (), SemanticError> as Visitor<
             Namespace<VariableState>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_block(&self.no_op, tree, data)
     }
 
@@ -88,22 +133,13 @@ impl Visitor<Namespace<VariableState>, Result<(), SemanticError>> for VariableSt
         tree: &crate::parser::ast::DeclarationTree,
         data: &mut Namespace<VariableState>,
     ) -> Result<(), SemanticError> {
+        Self::expect_undeclared(tree.name(), data.get(tree.name()))?;
         let state = if tree.initializer().is_none() {
             VariableState::Declared
         } else {
             VariableState::Initialized
         };
-        data.put(tree.name(), state, |existing, replacement| {
-            if *existing > replacement {
-                Err(SemanticError::InvalidVariableState {
-                    variable: tree.name().name().name().into(),
-                    existing: existing.to_string().into_boxed_str(),
-                    replacement: replacement.to_string().into_boxed_str(),
-                })
-            } else {
-                Ok(replacement)
-            }
-        });
+        Self::update_state(data, state, tree.name())?;
         self.no_op.visit_declaration(tree, data)
     }
 
@@ -114,7 +150,8 @@ impl Visitor<Namespace<VariableState>, Result<(), SemanticError>> for VariableSt
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<VariableState>, (), SemanticError> as Visitor<
             Namespace<VariableState>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_function(&self.no_op, tree, data)
     }
 
@@ -135,7 +172,8 @@ impl Visitor<Namespace<VariableState>, Result<(), SemanticError>> for VariableSt
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<VariableState>, (), SemanticError> as Visitor<
             Namespace<VariableState>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_literal(&self.no_op, tree, data)
     }
 
@@ -146,7 +184,8 @@ impl Visitor<Namespace<VariableState>, Result<(), SemanticError>> for VariableSt
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<VariableState>, (), SemanticError> as Visitor<
             Namespace<VariableState>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_lvalue_ident(&self.no_op, tree, data)
     }
 
@@ -157,7 +196,8 @@ impl Visitor<Namespace<VariableState>, Result<(), SemanticError>> for VariableSt
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<VariableState>, (), SemanticError> as Visitor<
             Namespace<VariableState>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_name(&self.no_op, tree, data)
     }
 
@@ -168,7 +208,8 @@ impl Visitor<Namespace<VariableState>, Result<(), SemanticError>> for VariableSt
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<VariableState>, (), SemanticError> as Visitor<
             Namespace<VariableState>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_negate(&self.no_op, tree, data)
     }
 
@@ -179,7 +220,8 @@ impl Visitor<Namespace<VariableState>, Result<(), SemanticError>> for VariableSt
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<VariableState>, (), SemanticError> as Visitor<
             Namespace<VariableState>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_programm(&self.no_op, tree, data)
     }
 
@@ -190,7 +232,8 @@ impl Visitor<Namespace<VariableState>, Result<(), SemanticError>> for VariableSt
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<VariableState>, (), SemanticError> as Visitor<
             Namespace<VariableState>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_return(&self.no_op, tree, data)
     }
 
@@ -201,7 +244,8 @@ impl Visitor<Namespace<VariableState>, Result<(), SemanticError>> for VariableSt
     ) -> Result<(), SemanticError> {
         <NoOpVisitor<Namespace<VariableState>, (), SemanticError> as Visitor<
             Namespace<VariableState>,
-            Result<(), SemanticError>,
+            (),
+            SemanticError,
         >>::visit_kind(&self.no_op, tree, data)
     }
 }
