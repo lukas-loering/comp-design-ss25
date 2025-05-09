@@ -12,6 +12,7 @@ mod lexer;
 mod parser;
 mod semantic;
 mod span;
+mod ir;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
