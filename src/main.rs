@@ -3,17 +3,19 @@ use std::{error::Error, path::PathBuf};
 
 use backend::CodeGen;
 use crow::CrowExitCodes;
+use ir::{optimize::LocalValueNumbering, SsaTranslation};
 use lexer::{Lexer, tokens::Token};
 use parser::{ParseResult, Parser, ProgrammTree, TokenSource};
 use semantic::SemanticAnalysis;
-use tracing::{debug, Level};
+use tracing::{Level, debug};
 
+mod backend;
 mod crow;
+mod ir;
 mod lexer;
 mod parser;
 mod semantic;
 mod span;
-mod backend;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
@@ -37,10 +39,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut semantic = SemanticAnalysis::new(&programm);
     semantic.analyze()?;
     debug!("{programm:#?}");
-    let main = programm.top_level().first().expect("expect at least one function");
-    let code = CodeGen::generate(main.body());
-    let code = code.join("\n");
-    std::fs::write(output, code)?;
+    let main = programm
+        .top_level()
+        .first()
+        .expect("expect at least one function")
+        .clone();
+    let ir = SsaTranslation::new(main, LocalValueNumbering::default()).translate();
+    // let code = CodeGen::generate(main.body());
+    // let code = code.join("\n");
+    // std::fs::write(output, code)?;
     Ok(())
 }
 
