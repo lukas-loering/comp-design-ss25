@@ -45,13 +45,13 @@ pub enum SemanticError {
 
 type SemanticResult<T> = Result<T, SemanticError>;
 
-pub struct SemanticAnalysis {
-    program: ProgrammTree,
+pub struct SemanticAnalysis<'a> {
+    program: &'a ProgrammTree,
 }
 
-impl SemanticAnalysis {
-    pub fn new(program: ProgrammTree) -> Self {
-        Self { program }
+impl<'a> SemanticAnalysis<'a> {
+    pub fn new(program: &'a ProgrammTree) -> Self {
+        Self { program: program }
     }
 
     #[tracing::instrument(skip(self))]

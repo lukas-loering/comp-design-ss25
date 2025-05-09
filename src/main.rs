@@ -1,17 +1,19 @@
 #![allow(unused)]
 use std::{error::Error, path::PathBuf};
 
+use backend::CodeGen;
 use crow::CrowExitCodes;
 use lexer::{Lexer, tokens::Token};
 use parser::{ParseResult, Parser, ProgrammTree, TokenSource};
 use semantic::SemanticAnalysis;
-use tracing::Level;
+use tracing::{debug, Level};
 
 mod crow;
 mod lexer;
 mod parser;
 mod semantic;
 mod span;
+mod backend;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
@@ -32,8 +34,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         std::process::exit(3)
     };
     let programm = lex_and_parse(source)?;
-    let mut semantic = SemanticAnalysis::new(programm);
+    let mut semantic = SemanticAnalysis::new(&programm);
     semantic.analyze()?;
+    debug!("{programm:#?}");
+    let main = programm.top_level().first().expect("expect at least one function");
+    let code = CodeGen::generate(main.body());
+    let code = code.join("\n");
+    std::fs::write(output, code)?;
     Ok(())
 }
 
