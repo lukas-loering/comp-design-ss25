@@ -79,6 +79,10 @@ impl IrGraph {
     pub fn name(&self) -> &str {
         &self.name
     }
+
+    pub fn end_block(&self) -> NodeId {
+        self.end_block
+    }
 }
 
 impl AsMut<IrGraph> for &mut IrGraph {
@@ -149,7 +153,7 @@ impl Node {
         self.data = Some(Box::new(data))
     }
 
-    fn get_data<T: 'static>(&self) -> Option<&T> {
+    pub fn get_data<T: 'static>(&self) -> Option<&T> {
         if let Some(data) = &self.data {
             data.downcast_ref::<T>()
         } else {
@@ -167,6 +171,10 @@ impl Node {
             None => format!("{:?}", self.kind),
         }
     }
+
+    pub fn kind(&self) -> NodeKind {
+        self.kind
+    }
 }
 
 impl NodeId {
@@ -182,15 +190,22 @@ impl NodeId {
         g.register_successor(node, self);
     }
 
-    fn predecessor(self, g: &IrGraph, idx: usize) -> NodeId {
+    pub fn predecessor(self, g: &IrGraph, idx: usize) -> NodeId {
         g.get(self)
             .predecessors
             .get(idx)
             .expect("predecssor to exist")
             .clone()
     }
+    pub fn predecessor_skip_proj(self, g: &IrGraph, idx: usize) -> NodeId {
+        let pred = self.predecessor(g, idx);
+        if matches!(g.get(pred).kind, NodeKind::Projection(_)) {
+            return pred.predecessor(g, NodeKind::PROJ_IN);
+        }
+        return pred;
+    }
 
-    fn predecessors(self, g: &IrGraph) -> &[NodeId] {
+    pub fn predecessors(self, g: &IrGraph) -> &[NodeId] {
         &g.get(self).predecessors
     }
 
@@ -258,9 +273,9 @@ pub enum NodeKind {
 }
 
 impl NodeKind {
-    const PROJ_IN: usize = 0;
-    const RETURN_SIDE_EFFECT: usize = 0;
-    const RETURN_RESULT: usize = 1;
+    pub const PROJ_IN: usize = 0;
+    pub const RETURN_SIDE_EFFECT: usize = 0;
+    pub const RETURN_RESULT: usize = 1;
 }
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum ProjectionInfo {
@@ -278,11 +293,11 @@ pub enum BinaryOp {
 }
 
 impl BinaryOp {
-    const LEFT: usize = 0;
-    const RIGHT: usize = 1;
+    pub const LEFT: usize = 0;
+    pub const RIGHT: usize = 1;
 }
 
-trait NodeProvider {
+pub trait NodeProvider {
     fn get(&self, node: NodeId) -> &Node;
     fn get_mut(&mut self, node: NodeId) -> &mut Node;
 }
