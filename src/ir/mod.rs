@@ -1,14 +1,20 @@
-use std::{any::Any, cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    any::Any,
+    cell::RefCell,
+    collections::HashMap,
+    fmt::{Display, format},
+    rc::Rc,
+};
 
 use linked_hash_set::LinkedHashSet;
-use tracing_subscriber::field::debug;
 
 mod constructor;
+pub mod debug;
 mod node;
 pub mod optimize;
 mod ssa;
 
-pub use {ssa::SsaTranslation};
+pub use ssa::SsaTranslation;
 
 type Graph = Rc<RefCell<IrGraph>>;
 
@@ -69,6 +75,10 @@ impl IrGraph {
         self.next_node_id = current.next();
         current
     }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 impl AsMut<IrGraph> for &mut IrGraph {
@@ -90,6 +100,12 @@ impl NodeId {
             .checked_add(1)
             .expect("can not create more than 4,294,967,295 IR nodes");
         self
+    }
+}
+
+impl Display for NodeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -138,6 +154,17 @@ impl Node {
             data.downcast_ref::<T>()
         } else {
             None
+        }
+    }
+
+    fn info(&self) -> String {
+        let value = match self.kind {
+            NodeKind::ConstInt => Some(self.get_data::<i64>().unwrap().to_string()),
+            _ => None,
+        };
+        match value {
+            Some(v) => format!("{:?}[{}]", self.kind, v),
+            None => format!("{:?}", self.kind),
         }
     }
 }

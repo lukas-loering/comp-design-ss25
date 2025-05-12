@@ -146,7 +146,13 @@ impl GraphConstructor {
     }
 
     fn seal_block(&mut self, block: NodeId) {
-        todo!();
+        let map = self.incomplete_phis.get(&block);
+        if let Some(map) = map {
+            for (name, node_id) in map.clone() {
+                self.add_phi_operands_vars(name.clone(), node_id);
+            }
+        }
+        self.sealed_blocks.insert(block);
     }
 }
 

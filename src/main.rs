@@ -3,7 +3,7 @@ use std::{error::Error, path::PathBuf};
 
 use backend::CodeGen;
 use crow::CrowExitCodes;
-use ir::{optimize::LocalValueNumbering, SsaTranslation};
+use ir::{SsaTranslation, debug::GraphVizPrinter, optimize::LocalValueNumbering};
 use lexer::{Lexer, tokens::Token};
 use parser::{ParseResult, Parser, ProgrammTree, TokenSource};
 use semantic::SemanticAnalysis;
@@ -19,7 +19,7 @@ mod span;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
+        .with_max_level(Level::INFO)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
     let mut args = std::env::args();
@@ -45,9 +45,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         .expect("expect at least one function")
         .clone();
     let ir = SsaTranslation::new(main, LocalValueNumbering::default()).translate();
+    let code = GraphVizPrinter::print(&ir);
     // let code = CodeGen::generate(main.body());
     // let code = code.join("\n");
-    // std::fs::write(output, code)?;
+    std::fs::write(output, code)?;
     Ok(())
 }
 
