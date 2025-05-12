@@ -12,9 +12,16 @@ use super::{
 pub trait Tree<T, R, E>: HasSpan {
     fn accept(&self, visitor: &dyn Visitor<T, R, E>, data: &mut T) -> Result<R, E>;
 }
-
+#[derive(Debug, Clone)]
 pub enum LValueTree {
     LValueIdentTree(LValueIdentTree),
+}
+impl LValueTree {
+    pub fn name(&self) -> &NameTree {
+        match self {
+            LValueTree::LValueIdentTree(lvalue_ident_tree) => lvalue_ident_tree.name(),
+        }
+    }
 }
 
 impl From<LValueIdentTree> for LValueTree {
@@ -40,7 +47,7 @@ impl<T, R, E> Tree<T, R, E> for LValueTree {
         }
     }
 }
-
+#[derive(Debug, Clone)]
 pub struct NameTree {
     name: Name,
     span: Span,
@@ -61,7 +68,7 @@ impl HasSpan for NameTree {
         self.span
     }
 }
-
+#[derive(Debug, Clone)]
 pub struct LValueIdentTree {
     name: NameTree,
 }
@@ -93,7 +100,7 @@ impl<T, R, E> Tree<T, R, E> for LValueIdentTree {
         visitor.visit_lvalue_ident(self, data)
     }
 }
-
+#[derive(Debug, Clone)]
 pub enum ExpressionTree {
     BinaryOpTree(BinaryOpTree),
     IdentExprTree(IdentExprTree),
@@ -146,7 +153,7 @@ impl<T, R, E> Tree<T, R, E> for ExpressionTree {
         }
     }
 }
-
+#[derive(Debug, Clone)]
 pub struct BinaryOpTree {
     lhs: Box<ExpressionTree>,
     rhs: Box<ExpressionTree>,
@@ -173,6 +180,10 @@ impl BinaryOpTree {
     pub fn rhs(&self) -> &ExpressionTree {
         &self.rhs
     }
+
+    pub fn operator_kind(&self) -> OperatorKind {
+        self.operator_kind
+    }
 }
 
 impl HasSpan for BinaryOpTree {
@@ -186,6 +197,7 @@ impl<T, R, E> Tree<T, R, E> for BinaryOpTree {
         visitor.visit_binary_op(self, data)
     }
 }
+#[derive(Debug, Clone)]
 pub struct IdentExprTree {
     name: NameTree,
 }
@@ -211,7 +223,7 @@ impl<T, R, E> Tree<T, R, E> for IdentExprTree {
         visitor.visit_ident_expr(self, data)
     }
 }
-
+#[derive(Debug, Clone)]
 pub struct LiteralTree {
     value: Box<str>,
     base: NumericBase,
@@ -262,7 +274,7 @@ impl LiteralTree {
         &self.value
     }
 }
-
+#[derive(Debug, Clone)]
 pub struct NegateTree {
     expr_tree: Box<ExpressionTree>,
     minus_pos: Span,
@@ -279,6 +291,11 @@ impl NegateTree {
     pub fn expr_tree(&self) -> &ExpressionTree {
         &self.expr_tree
     }
+
+    pub fn operator_kind(&self) -> OperatorKind {
+        // should be negate lol
+        OperatorKind::Minus
+    }
 }
 
 impl HasSpan for NegateTree {
@@ -292,7 +309,7 @@ impl<T, R, E> Tree<T, R, E> for NegateTree {
         visitor.visit_negate(self, data)
     }
 }
-
+#[derive(Debug, Clone)]
 pub enum StatementTree {
     AssignmentTree(AssignmentTree),
     BlockTree(BlockTree),
@@ -347,7 +364,7 @@ impl<T, R, E> Tree<T, R, E> for StatementTree {
         }
     }
 }
-
+#[derive(Debug, Clone)]
 pub struct AssignmentTree {
     lvalue: LValueTree,
     operator: Operator,
@@ -382,8 +399,12 @@ impl AssignmentTree {
     pub fn expression(&self) -> &ExpressionTree {
         &self.expression
     }
-}
 
+    pub fn operator(&self) -> Operator {
+        self.operator
+    }
+}
+#[derive(Debug, Clone)]
 pub struct BlockTree {
     statements: Box<[StatementTree]>,
     span: Span,
@@ -410,7 +431,7 @@ impl<T, R, E> Tree<T, R, E> for BlockTree {
         visitor.visit_block(self, data)
     }
 }
-
+#[derive(Debug, Clone)]
 pub struct DeclarationTree {
     kind: KindTree,
     name: NameTree,
@@ -453,7 +474,7 @@ impl<T, R, E> Tree<T, R, E> for DeclarationTree {
         visitor.visit_declaration(self, data)
     }
 }
-
+#[derive(Debug, Clone)]
 pub struct KindTree {
     kind: Kind,
     span: Span,
@@ -479,7 +500,7 @@ impl<T, R, E> Tree<T, R, E> for KindTree {
         visitor.visit_kind(self, data)
     }
 }
-
+#[derive(Debug, Clone)]
 pub struct ReturnTree {
     expr: ExpressionTree,
     start_pos: Position,
@@ -507,6 +528,7 @@ impl<T, R, E> Tree<T, R, E> for ReturnTree {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ProgrammTree {
     top_level: Box<[FunctionTree]>,
 }
@@ -535,7 +557,7 @@ impl ProgrammTree {
         &self.top_level
     }
 }
-
+#[derive(Debug, Clone)]
 pub struct FunctionTree {
     return_type: KindTree,
     name: NameTree,
