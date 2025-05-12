@@ -44,16 +44,14 @@ fn main_impl() -> Result<(), Box<dyn Error>> {
     let mut args = args.skip(1);
     let input = PathBuf::from(args.next().expect("exactly 2 args"));
     let output = PathBuf::from(args.next().expect("exactly 2 args"));
-    let Ok(source) = std::fs::read_to_string(&input) else {
-        eprintln!("file {} not found", input.display());
-        std::process::exit(3)
-    };
-    let Ok(programm) = lex_and_parse(source).inspect_err(|e| std::eprintln!("{e}")) else {
+    let source = std::fs::read_to_string(&input)?;
+    let Ok(programm) = lex_and_parse(source).inspect_err(|e| std::eprintln!("ParseError: {e}"))
+    else {
         std::process::exit(CrowExitCodes::ParsingErr.into())
     };
     let mut semantic = SemanticAnalysis::new(&programm);
     if let Err(e) = semantic.analyze() {
-        std::eprintln!("{e}");
+        std::eprintln!("SemanticError: {e}");
         std::process::exit(CrowExitCodes::SemanticErr.into());
     };
     debug!("{programm:#?}");
