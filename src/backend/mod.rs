@@ -264,7 +264,8 @@ where
                 let pred = node.predecessor_skip_proj(self.graph, NodeKind::RETURN_RESULT);
                 write!(
                     self.builder,
-                    "movq {}, %rax\n",
+                    "movq {}, %rax\n\
+                    ret\n",
                     self.provider.get_register(pred).name()
                 )
                 .unwrap();
