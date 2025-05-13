@@ -4,12 +4,15 @@ use std::{
     fmt::{Display, Write, write},
 };
 
+use liveness::Liveness;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use crate::{
     ir::{BinaryOp, IrGraph, NodeId, NodeKind, NodeProvider},
     parser::ast::{AssignmentTree, BlockTree, ExpressionTree, NameTree, StatementTree},
 };
+
+mod liveness;
 
 pub trait CodeGenerator {
     fn generate(self) -> Result<String, Box<dyn std::error::Error>>;
@@ -230,6 +233,8 @@ where
 {
     fn generate(mut self) -> Result<String, Box<dyn std::error::Error>> {
         self.provider.allocate(self.graph)?;
+        let liveness = Liveness::generate(self.graph);
+        tracing::debug!("{}", liveness.show());
         let mut code = String::new();
         let mut visited = HashSet::new();
         self.scan(self.graph.end_block(), &mut visited);

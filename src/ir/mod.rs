@@ -66,7 +66,7 @@ impl IrGraph {
         self.successors.entry(r#for).or_default().remove(&successor);
     }
 
-    fn successors(&self, node: NodeId) -> LinkedHashSet<NodeId> {
+    pub fn successors(&self, node: NodeId) -> LinkedHashSet<NodeId> {
         self.successors.get(&node).cloned().unwrap_or_default()
     }
 
@@ -167,8 +167,8 @@ impl Node {
             _ => None,
         };
         match value {
-            Some(v) => format!("{:?}[{}]", self.kind, v),
-            None => format!("{:?}", self.kind),
+            Some(v) => format!("({}){:?}[{}]", self.id, self.kind, v),
+            None => format!("({}){:?}", self.id, self.kind),
         }
     }
 
@@ -207,6 +207,10 @@ impl NodeId {
 
     pub fn predecessors(self, g: &IrGraph) -> &[NodeId] {
         &g.get(self).predecessors
+    }
+
+    pub fn info(self, g: &IrGraph) -> String {
+        g.get(self).info()
     }
 
     fn add_predecessor(self, g: &mut IrGraph, node: NodeId) {

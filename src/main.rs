@@ -30,7 +30,7 @@ fn main() {
 fn main_impl() -> Result<(), Box<dyn Error>> {
     if cfg!(debug_assertions) {
         let subscriber = tracing_subscriber::FmtSubscriber::builder()
-            .with_max_level(Level::INFO)
+            .with_max_level(Level::TRACE)
             .finish();
         tracing::subscriber::set_global_default(subscriber)
             .expect("setting default subscriber failed");
