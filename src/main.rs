@@ -61,12 +61,11 @@ fn main_impl() -> Result<(), Box<dyn Error>> {
         .expect("expect at least one function")
         .clone();
     let ir = SsaTranslation::new(main, LocalValueNumbering::default()).translate();
-    let mut code_gen = X86_64Asm::new(&ir, TrivialRegisterProvider::default()).generate()?;
-
     if cfg!(debug_assertions) {
         let debug_graph = GraphVizPrinter::print(&ir);
         std::fs::write(format!("{}.viz", &output.display()), debug_graph)?;
     }
+    let mut code_gen = X86_64Asm::new(&ir, TrivialRegisterProvider::default()).generate()?;
 
     std::fs::write(
         format!("{}.s", &output.display()),
