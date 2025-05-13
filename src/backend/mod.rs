@@ -234,7 +234,7 @@ where
     fn generate(mut self) -> Result<String, Box<dyn std::error::Error>> {
         self.provider.allocate(self.graph)?;
         let liveness = Liveness::generate(self.graph);
-        tracing::debug!("{}", liveness.show());
+        tracing::debug!("{}", liveness.show(self.graph));
         let mut code = String::new();
         let mut visited = HashSet::new();
         self.scan(self.graph.end_block(), &mut visited);

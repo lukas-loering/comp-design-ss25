@@ -83,6 +83,10 @@ impl IrGraph {
     pub fn end_block(&self) -> NodeId {
         self.end_block
     }
+
+    pub fn nodes(&self) -> &HashMap<NodeId, Node> {
+        &self.nodes
+    }
 }
 
 impl AsMut<IrGraph> for &mut IrGraph {
@@ -91,7 +95,7 @@ impl AsMut<IrGraph> for &mut IrGraph {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NodeId(u32);
 
 impl NodeId {
@@ -161,7 +165,7 @@ impl Node {
         }
     }
 
-    fn info(&self) -> String {
+    pub fn info(&self) -> String {
         let value = match self.kind {
             NodeKind::ConstInt => Some(self.get_data::<i64>().unwrap().to_string()),
             _ => None,
