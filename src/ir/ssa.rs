@@ -1,15 +1,20 @@
+use std::collections::VecDeque;
+
 use thiserror::Error;
 
-use crate::parser::{
-    Tree,
-    ast::{FunctionTree, StatementTree},
-    symbol::Name,
-    visitor::Visitor,
+use crate::{
+    parser::{
+        Tree,
+        ast::{FunctionTree, StatementTree},
+        symbol::Name,
+        visitor::Visitor,
+    },
+    span::HasSpan,
 };
 
 use super::{
     BinaryOp, IrGraph, NodeId, NodeKind, NodeProvider, constructor::GraphConstructor,
-    optimize::Optimizer,
+    debug::DebugInfo, optimize::Optimizer,
 };
 
 // #[derive(Debug, Error)]
@@ -31,6 +36,7 @@ type SsaError = ();
 pub struct SsaTranslation {
     constructor: GraphConstructor,
     function: FunctionTree,
+    debug_stack: VecDeque<DebugInfo>,
 }
 
 impl SsaTranslation {
@@ -38,12 +44,13 @@ impl SsaTranslation {
         let name = function.name().name().name().into();
         Self {
             constructor: GraphConstructor::new(optimizer, name),
+            debug_stack: Default::default(),
             function,
         }
     }
 
     pub fn translate(mut self) -> IrGraph {
-        let visitor = SsaTranslationVisitor {};
+        let visitor = SsaTranslationVisitor::default();
         // NOTE: This clone is super stupid but I cant be bothered to work with rust here atm
         self.function.clone().accept(&visitor, &mut self);
         self.constructor.graph
@@ -62,9 +69,19 @@ impl SsaTranslation {
     fn current_block(&mut self) -> NodeId {
         self.constructor.current_block()
     }
+
+    fn push_span(&mut self, span: &impl HasSpan) {
+        self.debug_stack.push_back(DebugInfo::get_debug_info());
+        DebugInfo::set_debug_info(DebugInfo::SourceInfo(span.span()));
+    }
+
+    fn pop_span(&mut self) {
+        DebugInfo::set_debug_info(self.debug_stack.pop_front().unwrap_or(DebugInfo::None));
+    }
 }
 
-struct SsaTranslationVisitor;
+#[derive(Default)]
+struct SsaTranslationVisitor {}
 
 impl SsaTranslationVisitor {
     fn proj_result_div_mod(data: &mut SsaTranslation, div_mod: NodeId) -> NodeId {
@@ -88,6 +105,7 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &crate::parser::ast::AssignmentTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        data.push_span(tree);
         let constructor: Option<Box<dyn FnMut(NodeId, NodeId, &mut SsaTranslation) -> NodeId>> =
             match tree.operator().kind() {
                 crate::lexer::tokens::OperatorKind::AssignMinus => {
@@ -133,6 +151,7 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
                 data.write_variable(name.clone(), current_block, right);
             }
         };
+        data.pop_span();
         Ok(None)
     }
 
@@ -141,6 +160,7 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &crate::parser::ast::BinaryOpTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        data.push_span(tree);
         let left = tree.lhs().accept(self, data).unwrap().unwrap();
         let right = tree.rhs().accept(self, data).unwrap().unwrap();
         let res = match tree.operator_kind() {
@@ -157,6 +177,7 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
             }
             default => panic!("not a binary expression operator {default}"),
         };
+        data.pop_span();
         Ok(Some(res))
     }
 
@@ -165,6 +186,7 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &crate::parser::ast::BlockTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        data.push_span(tree);
         for statement in tree.statements() {
             statement.accept(self, data);
             // simple dead code elimination: if we hit a return skip everything after that in this block
@@ -172,6 +194,7 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
                 break;
             }
         }
+        data.pop_span();
         Ok(None)
     }
 
@@ -180,11 +203,13 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &crate::parser::ast::DeclarationTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        data.push_span(tree);
         if let Some(initializer) = tree.initializer() {
             let rhs = initializer.accept(self, data).unwrap().unwrap();
             let current_blcok = data.current_block();
             data.write_variable(tree.name().name().clone(), current_blcok, rhs);
         }
+        data.pop_span();
         Ok(None)
     }
 
@@ -193,10 +218,12 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &FunctionTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        data.push_span(tree);
         let start = data.constructor.new_start();
         let side_effect = data.constructor.new_side_effect_proj(start);
         data.constructor.write_current_side_effect(side_effect);
         tree.body().accept(self, data);
+        data.pop_span();
         Ok(None)
     }
 
@@ -205,10 +232,13 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &crate::parser::ast::IdentExprTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        data.push_span(tree);
         let current_block = data.current_block();
-        Ok(Some(
+        let value = Ok(Some(
             data.read_variable(tree.name().name().clone(), current_block),
-        ))
+        ));
+        data.pop_span();
+        value
     }
 
     fn visit_literal(
@@ -216,9 +246,12 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &crate::parser::ast::LiteralTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
-        Ok(Some(
+        data.push_span(tree);
+        let value = Ok(Some(
             data.constructor.new_const_int(tree.parse_value().unwrap()),
-        ))
+        ));
+        data.pop_span();
+        value
     }
 
     fn visit_lvalue_ident(
@@ -242,9 +275,11 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &crate::parser::ast::NegateTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        data.push_span(tree);
         let node = tree.expr_tree().accept(self, data).unwrap().unwrap();
         let zero = data.constructor.new_const_int(0);
         let res = data.constructor.new_sub(zero, node);
+        data.pop_span();
         Ok(Some(res))
     }
 
@@ -261,12 +296,14 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &crate::parser::ast::ReturnTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        data.push_span(tree);
         let node = tree.expr().accept(self, data).unwrap().unwrap();
         let ret = data.constructor.new_return(node);
         data.constructor
             .graph
             .end_block
             .add_predecessor(&mut data.constructor.graph, ret);
+        data.pop_span();
         Ok(None)
     }
 

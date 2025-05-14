@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     fmt::DebugList,
 };
 
@@ -12,12 +12,6 @@ use tracing::trace;
 use crate::ir::{BinaryOp, IrGraph, NodeId, NodeKind, NodeProvider};
 
 use itertools::Itertools;
-
-#[derive(Debug, Clone)]
-pub struct Liveness {
-    live_at: LinkedHashMap<NodeId, HashSet<NodeId>>,
-    edges: InterferenceGraph,
-}
 
 mod interference {
 
@@ -69,6 +63,131 @@ edge [arrowhead="none"];"#
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Liveness {
+    edges: InterferenceGraph,
+}
+
+#[derive(Default, Debug)]
+struct Facts {
+    defs: HashMap<NodeId, HashSet<NodeId>>,
+    uses: HashMap<NodeId, HashSet<NodeId>>,
+    succs: HashMap<NodeId, HashSet<NodeId>>,
+    live_in: HashMap<NodeId, HashSet<NodeId>>,
+    live_out: HashMap<NodeId, HashSet<NodeId>>,
+}
+
+impl Facts {
+    fn def(&self, l: NodeId, x: NodeId) -> bool {
+        self.defs.get(&l).is_some_and(|set| set.contains(&x))
+    }
+    fn r#use(&self, l: NodeId, x: NodeId) -> bool {
+        self.defs.get(&l).is_some_and(|set| set.contains(&x))
+    }
+    fn succ(&self, l: NodeId, x: NodeId) -> bool {
+        self.succs.get(&l).is_some_and(|set| set.contains(&x))
+    }
+    fn live_in(&self, l: NodeId, x: NodeId) -> bool {
+        self.live_in.get(&l).is_some_and(|set| set.contains(&x))
+    }
+
+    fn add_live_in(&mut self, l: NodeId, x: NodeId) {
+        self.live_in.entry(l).or_default().insert(x);
+    }
+}
+
+impl Facts {
+    pub fn generate(g: &IrGraph) -> Self {
+        let mut res = Self::default();
+        res.gen_facts(g);
+        res.gen_live(g);
+        res
+    }
+
+    fn gen_live(&mut self, g: &IrGraph) {
+        // K1: use(l, x) => live(l, x)
+        for (l, x) in &self.uses {
+            self.live_in.insert(*l, x.clone());
+        }
+
+        // K2: live(l', u) and succ(l, l') and (not (def(l, u))
+
+        let mut worklist = self
+            .live_in
+            .iter()
+            .map(|(x, set)| set.iter().map(|y| (*x, *y)))
+            .flatten()
+            .collect::<VecDeque<_>>();
+        while let Some((l_prime, u)) = worklist.pop_front() {
+            let succs = self
+                .succs
+                .iter()
+                .filter_map(|(l, _)| {
+                    if self.succ(*l, l_prime) {
+                        Some(*l)
+                    } else {
+                        None
+                    }
+                })
+                .collect_vec();
+            for l in succs {
+                if !self.def(l, u) {
+                    if !self.live_in(l, u) {
+                        worklist.push_back((l, u));
+                        self.add_live_in(l, u);
+                    }
+                }
+            }
+        }
+
+        let mut live_out = HashMap::<_, HashSet<_>>::default();
+        // Transform live_in to live_out
+        for (n, set) in &self.live_in {
+            for v in set {
+                for m in n.predecessors(g) {
+                    live_out.entry(*m).or_default().insert(*v);
+                }
+            }
+        }
+        self.live_out = live_out;
+    }
+
+    fn gen_facts(&mut self, g: &IrGraph) {
+        for (id, node) in g.nodes() {
+            match node.kind() {
+                NodeKind::BinaryOp(binary_op) => {
+                    // J1: x <- y op z
+                    let y = id.predecessor_skip_proj(g, BinaryOp::LEFT);
+                    let z = id.predecessor_skip_proj(g, BinaryOp::RIGHT);
+                    self.defs.entry(*id).or_default().insert(*id);
+                    self.uses.entry(*id).or_default().insert(y);
+                    self.uses.entry(*id).or_default().insert(z);
+                    let succs = g.successors(*id);
+                    for succ in succs {
+                        self.succs.entry(*id).or_default().insert(succ);
+                    }
+                }
+                NodeKind::Return => {
+                    // J2: return x
+                    let x = id.predecessor_skip_proj(g, NodeKind::RETURN_RESULT);
+                    self.uses.entry(*id).or_default().insert(x);
+                }
+                NodeKind::ConstInt => {
+                    // J3: x <- c
+                    self.defs.entry(*id).or_default().insert(*id);
+                    let succs = g.successors(*id);
+                    for succ in succs {
+                        self.succs.entry(*id).or_default().insert(succ);
+                    }
+                }
+                NodeKind::Block | NodeKind::Phi | NodeKind::Start | NodeKind::Projection(_) => {
+                    // no rules for these blocks
+                }
+            }
+        }
+    }
+}
+
 impl Liveness {
     pub fn show(&self, g: &IrGraph) -> String {
         self.edges.graph_viz(g)
@@ -89,13 +208,12 @@ impl Liveness {
     #[tracing::instrument(skip(g))]
     pub fn generate(g: &IrGraph) -> Self {
         let end_block = g.end_block();
-        let mut live_at = LinkedHashMap::default();
+        let facts = Facts::generate(g);
         let mut visited = HashSet::default();
         let mut interference = InterferenceGraph::default();
         visited.insert(end_block);
-        Self::scan(g, end_block, &mut live_at, &mut visited, &mut interference);
+        Self::scan(g, end_block, &facts, &mut visited, &mut interference);
         Self {
-            live_at,
             edges: interference,
         }
     }
@@ -105,103 +223,40 @@ impl Liveness {
     fn scan(
         g: &IrGraph,
         node: NodeId,
-        live_at: &mut LinkedHashMap<NodeId, HashSet<NodeId>>,
+        facts: &Facts,
         visited: &mut HashSet<NodeId>,
         interference: &mut InterferenceGraph,
     ) {
-        let mut live = HashSet::new();
-        // Inference Rule II:
-        // A variable is live, if it is that is used on the right-hand side of an instruction
-        match g.get(node).kind() {
-            NodeKind::BinaryOp(binary_op) => {
-                let lhs = node.predecessor_skip_proj(g, BinaryOp::LEFT);
-                let rhs = node.predecessor_skip_proj(g, BinaryOp::RIGHT);
-                trace!("(R2) {} live at {}", lhs.info(g), node.info(g));
-                trace!("(R2) {} live at {}", rhs.info(g), node.info(g));
-                live.insert(lhs);
-                live.insert(rhs);
-            }
-            NodeKind::Return => {
-                let pred = node.predecessor_skip_proj(g, NodeKind::RETURN_RESULT);
-                trace!("(R2) {} live at {}", pred.info(g), node.info(g));
-                live.insert(pred);
-            }
-            NodeKind::ConstInt
-            | NodeKind::Phi
-            | NodeKind::Block
-            | NodeKind::Start
-            | NodeKind::Projection(_) => {
-                // no assignments of variables
-            }
-        }
+        //         Loop over the instructions in the program, and for each one:
 
-        // Inference Rule I:
-        // A variable is live on line `l`, if a variable is live on `l + 1`` and is not assigned on line `l`
-        for succ in g.successors(node) {
-            if let Some(next_line) = live_at.get(&succ) {
-                for live_node in next_line {
-                    if *live_node != node {
-                        trace!("(R1) {} live at {}", live_node.info(g), node.info(g));
-                        live.insert(*live_node);
-                    }
-                }
-            }
-        }
+        // Let:
+
+        // def(i) = variables defined (assigned) at instruction i
+
+        // live_out(i) = variables live after instruction i
+
+        // For each variable d in def(i):
+
+        // For each variable l in live_out(i):
+
+        // If l ≠ d, then add an undirected edge between d and l
+
+        // This encodes that d and l interfere because d is written while l is still live.
 
         // Construct Interference graph
-        match g.get(node).kind() {
-            NodeKind::BinaryOp(binary_op) => {
-                // For an t ← s1 ⊕ s2 instruction we create an edge between t and any different
-                // variable ti ̸= t live after this line, i.e., live-in at the successor. t and ti should
-                // be assigned to different registers, because otherwise the assignment to t could
-                // destroy the proper contents of ti that are live-in after, so still needed.
-
-                for succ in g.successors(node) {
-                    if let Some(next_line) = live_at.get(&succ) {
-                        for live_node in next_line {
-                            if *live_node != node {
-                                interference.add_edge(*live_node, node);
-                            }
-                        }
+        for i in g.nodes().keys() {
+            let Some(defs) = facts.defs.get(i) else {
+                continue;
+            };
+            let Some(live_out) = facts.live_out.get(i) else {
+                continue;
+            };
+            for d in defs {
+                for l in live_out {
+                    if l != d {
+                        interference.add_edge(*d, *l);
                     }
                 }
-            }
-            NodeKind::ConstInt => {
-                // For a t ← s instruction (move) we create an edge between t and any variable ti live after this line that is different from t and s.
-                for succ in g.successors(node) {
-                    if let Some(next_line) = live_at.get(&succ) {
-                        for live_node in next_line {
-                            if *live_node != node {
-                                interference.add_edge(*live_node, node);
-                            }
-                        }
-                    }
-                }
-            }
-            NodeKind::Return => {
-                // For a t ← s instruction (move) we create an edge between t and any variable ti live after this line that is different from t and s.
-                let pred = node.predecessor_skip_proj(g, NodeKind::RETURN_RESULT);
-                for succ in g.successors(node) {
-                    if let Some(next_line) = live_at.get(&succ) {
-                        for live_node in next_line {
-                            if *live_node != node && *live_node != pred {
-                                interference.add_edge(*live_node, node);
-                            }
-                        }
-                    }
-                }
-            }
-            NodeKind::Block | NodeKind::Phi | NodeKind::Start | NodeKind::Projection(_) => {
-                // no rule here
-            }
-        }
-
-        live_at.insert(node, live);
-
-        // Walk Up
-        for pred in node.predecessors(g) {
-            if (visited.insert(*pred)) {
-                Self::scan(g, *pred, live_at, visited, interference);
             }
         }
     }

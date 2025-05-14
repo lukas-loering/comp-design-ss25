@@ -6,6 +6,7 @@ use std::{
     rc::Rc,
 };
 
+use debug::DebugInfo;
 use linked_hash_set::LinkedHashSet;
 
 mod constructor;
@@ -14,7 +15,10 @@ mod node;
 pub mod optimize;
 mod ssa;
 
+use optimize::OptimizableNode;
 pub use ssa::SsaTranslation;
+
+use crate::span::Span;
 
 type Graph = Rc<RefCell<IrGraph>>;
 
@@ -38,11 +42,11 @@ impl IrGraph {
         let mut nodes = HashMap::new();
         nodes.insert(
             start_block,
-            Node::new(start_block, start_block, vec![], NodeKind::Block),
+            Node::new(start_block, start_block, vec![], NodeKind::Block, None),
         );
         nodes.insert(
             end_block,
-            Node::new(end_block, end_block, vec![], NodeKind::Block),
+            Node::new(end_block, end_block, vec![], NodeKind::Block, None),
         );
 
         let graph = Self {
@@ -123,38 +127,41 @@ pub struct Node {
     block: NodeId,
     predecessors: Vec<NodeId>,
     kind: NodeKind,
+    debug: DebugInfo,
     data: Option<Box<dyn Any>>,
 }
 
 impl Node {
-    pub fn new(id: NodeId, block: NodeId, predecessors: Vec<NodeId>, kind: NodeKind) -> Self {
+    pub fn new(id: NodeId, block: NodeId, predecessors: Vec<NodeId>, kind: NodeKind, data: Option<Box<dyn Any>>) -> Self {
         Self {
             id,
             block,
             predecessors,
             kind,
-            data: None,
+            debug: DebugInfo::get_debug_info(),
+            data,
         }
     }
 
-    fn new_node(
-        mut g: impl AsMut<IrGraph>,
+    fn new_node<'g>(
+        mut g: &'g mut IrGraph,
         kind: NodeKind,
         block: NodeId,
         predecessors: &[NodeId],
-    ) -> NodeId {
-        let g = g.as_mut();
+    ) -> OptimizableNode<'g> {        
         let id = g.next_node_id();
-        g.nodes
-            .insert(id, Node::new(id, block, predecessors.to_vec(), kind));
-        for p in predecessors {
-            g.register_successor(*p, id);
-        }
-        id
+        OptimizableNode::new(Node::new(id, block, predecessors.to_vec(), kind, None), g)        
     }
 
-    fn set_data<T: 'static>(&mut self, data: T) {
-        self.data = Some(Box::new(data))
+    fn new_node_with_data<'g, T: 'static>(
+        mut g: &'g mut IrGraph,
+        kind: NodeKind,
+        block: NodeId,
+        data: T,
+        predecessors: &[NodeId],
+    ) -> OptimizableNode<'g> {        
+        let id = g.next_node_id();
+        OptimizableNode::new(Node::new(id, block, predecessors.to_vec(), kind, Some(Box::new(data))), g)        
     }
 
     pub fn get_data<T: 'static>(&self) -> Option<&T> {
@@ -178,6 +185,50 @@ impl Node {
 
     pub fn kind(&self) -> NodeKind {
         self.kind
+    }
+    
+    pub fn debug(&self) -> DebugInfo {
+        self.debug
+    }
+
+    
+    /// For most nodes, it checks for the same node kind and node id
+    ///
+    /// For const int nodes:
+    ///   - the value is compared
+    ///
+    /// For commutative binary operations:
+    ///   - the regular and swapped order of the operations are comapred
+    fn eq(&self, other: NodeId, g: &IrGraph) -> bool {        
+        let other = g.get(other);
+
+        if self.kind != other.kind {
+            return false;
+        }
+
+        match (self.kind, other.kind) {
+            (NodeKind::BinaryOp(o1), NodeKind::BinaryOp(o2)) => {
+                // conservative approach for binary ops which can cause side effects
+                if matches!(o1, BinaryOp::Div | BinaryOp::Mod) {
+                    return self.id == other.id;
+                }
+                let lhs1 = self.predecessors[BinaryOp::LEFT];
+                let lhs2 = other.predecessors[BinaryOp::LEFT];
+                let rhs1 = self.predecessors[BinaryOp::RIGHT];
+                let rhs2 = other.predecessors[BinaryOp::RIGHT];
+                let mut equal = lhs1.eq(lhs2, g) && rhs1.eq(rhs2, g);
+                // for commutative operations we check if inverted operations are equal
+                if !equal && matches!(o1, BinaryOp::Add | BinaryOp::Mul) {
+                    equal = lhs1.eq(rhs1, g) && lhs2.eq(rhs2, g);
+                };
+                equal
+            }
+            (NodeKind::ConstInt, NodeKind::ConstInt) => {
+                self.block == other.block
+                    && (*self.get_data::<i64>().unwrap()) == (*other.get_data::<i64>().unwrap())
+            }
+            (_, _) => self.id == other.id,
+        }
     }
 }
 
@@ -222,6 +273,7 @@ impl NodeId {
         g.register_successor(node, self);
     }
 
+    
     /// For most nodes, it checks for the same node kind and node id
     ///
     /// For const int nodes:
@@ -261,6 +313,7 @@ impl NodeId {
             (_, _) => self == other.id,
         }
     }
+
 }
 
 impl NodeId {

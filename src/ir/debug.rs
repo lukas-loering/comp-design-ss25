@@ -1,11 +1,32 @@
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet},
     fmt::Write,
+    sync::{LazyLock, RwLock},
 };
 
 use tracing_subscriber::fmt::format;
 
+use crate::span::Span;
+
 use super::{IrGraph, NodeId, NodeKind, NodeProvider};
+
+#[derive(Debug, Clone, Copy)]
+pub enum DebugInfo {
+    None,
+    SourceInfo(Span),
+}
+
+static DEBUG_INFO: RwLock<DebugInfo> = RwLock::new(DebugInfo::None);
+impl DebugInfo {
+    pub fn set_debug_info(info: DebugInfo) {
+        *DEBUG_INFO.write().unwrap() = info;
+    }
+
+    pub fn get_debug_info() -> DebugInfo {
+        DEBUG_INFO.read().unwrap().clone()
+    }
+}
 
 pub struct GraphVizPrinter<'g> {
     clusters: HashMap<NodeId, HashSet<NodeId>>,
@@ -91,9 +112,9 @@ impl<'g> GraphVizPrinter<'g> {
                 )
                 .unwrap();
 
-                // if let Some(span) = node.debug_info().and_then(|info| info.source_span()) {
-                //     write!(self.builder, ", tooltip=\"source span: {}\"", span).unwrap();
-                // }
+                if let DebugInfo::SourceInfo(span) = self.graph.get(*node).debug() {
+                    write!(self.builder, ", tooltip=\"source span: {}\"", span).unwrap();
+                }
 
                 writeln!(self.builder, "];").unwrap();
             }
