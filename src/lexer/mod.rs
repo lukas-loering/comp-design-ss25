@@ -157,6 +157,9 @@ impl<'s> Lexer<'s> {
                         } else if self.peek(1) == "*" {
                             comment = CommentKind::MultiLine;
                             multi_line_depth += 1;
+                        } else if comment == CommentKind::MultiLine {
+                            self.pos += 1;
+                            continue;
                         } else {
                             return None;
                         }
