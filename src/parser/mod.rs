@@ -25,17 +25,19 @@ pub mod visitor;
 #[derive(Debug, Clone, thiserror::Error)]
 #[non_exhaustive]
 pub enum ParseError {
-    #[error("expected operator {expected} got {got}")]
+    #[error("expected operator `{expected}` got `{got}`")]
     ExpectedOperator { expected: OperatorKind, got: Token },
-    #[error("expected assignment got {got}")]
+    #[error("expected assignment got `{got}`")]
     ExpectedAssignment { got: Token },
-    #[error("expected keyword {expected} got {got}")]
+    #[error("expected keyword `{expected}` got `{got}`")]
     ExpectedKeyword { expected: KeywordKind, got: Token },
-    #[error("expected identifier got {got}")]
+    #[error("expected identifier got `{got}`")]
     ExpectedIdentifier { got: Token },
-    #[error("expected separator {expected} got {got}")]
+    #[error("expected identifier `{ident}` got `{got}`")]
+    ExpectedExactIdentifier { ident: Box<str>, got: Token },
+    #[error("expected separator `{expected}` got `{got}`")]
     ExpectedSeparator { expected: SeparatorKind, got: Token },
-    #[error("invalid factor {got}")]
+    #[error("invalid factor `{got}`")]
     InvalidFactor { got: Token },
     #[error("reached end of file")]
     EndOfFile,
@@ -64,6 +66,9 @@ impl Parser {
         debug!("parsing function");
         let return_type = self.tokens.expect_keyword(KeywordKind::Int)?;
         let ident = self.tokens.expect_identifier()?;
+        if ident.value() != "main" {
+            return Err(ParseError::ExpectedExactIdentifier { ident: "main".into(), got: Token::Identifier(ident) });
+        }
         self.tokens.expect_separator(SeparatorKind::ParenOpen)?;
         self.tokens.expect_separator(SeparatorKind::ParenClose)?;
         let body = self.parse_block()?;
