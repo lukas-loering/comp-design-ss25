@@ -1,15 +1,15 @@
 use std::fmt::Display;
 
-use crate::parser::{
-    ProgrammTree,
-    ast::NameTree,
-    visitor::{NoOpVisitor, Visitor},
-};
+use crate::{lexer::tokens::OperatorKind, parser::{
+    ast::NameTree, visitor::{NoOpVisitor, Visitor}, ProgrammTree
+}};
 
 use super::{SemanticError, SemanticResult, namespace::Namespace};
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Default)]
 pub enum VariableState {
+    #[default]
+    Undeclared,
     Declared,
     Initialized,
 }
@@ -19,6 +19,7 @@ impl Display for VariableState {
         match self {
             VariableState::Declared => write!(f, "declared"),
             VariableState::Initialized => write!(f, "initialized"),
+            VariableState::Undeclared => write!(f, "undeclared"),
         }
     }
 }
@@ -34,8 +35,8 @@ impl VariableStatusAnalysis {
         }
     }
 
-    fn expect_undeclared(name: &NameTree, var_state: Option<VariableState>) -> SemanticResult<()> {
-        if var_state.is_some() {
+    fn expect_undeclared(name: &NameTree, var_state: VariableState) -> SemanticResult<()> {
+        if var_state != VariableState::Undeclared {
             Err(SemanticError::MultipleVariableDeclarations(
                 name.name().name().into(),
             ))
@@ -46,23 +47,23 @@ impl VariableStatusAnalysis {
 
     fn expect_declared(
         name: &NameTree,
-        var_state: Option<VariableState>,
-    ) -> SemanticResult<VariableState> {
+        var_state: VariableState,
+    ) -> SemanticResult<()> {
         match var_state {
-            Some(s) => Ok(s),
-            None => Err(SemanticError::AssignedUndeclaredVariable(
+            VariableState::Declared | VariableState::Initialized => Ok(()),
+            VariableState::Undeclared => Err(SemanticError::AssignedUndeclaredVariable(
                 name.name().name().into(),
             )),
         }
     }
 
-    fn expect_intialized(name: &NameTree, state: Option<VariableState>) -> SemanticResult<()> {
-        if matches!(state, None | Some(VariableState::Declared)) {
+    fn expect_intialized(name: &NameTree, state: VariableState) -> SemanticResult<()> {
+        if state == VariableState::Initialized {
+            Ok(())
+        } else {
             Err(SemanticError::UnitializedVariableUse(
                 name.name().name().into(),
             ))
-        } else {
-            Ok(())
         }
     }
 
@@ -94,9 +95,14 @@ impl Visitor<Namespace<VariableState>, (), SemanticError> for VariableStatusAnal
         match tree.lvalue() {
             crate::parser::ast::LValueTree::LValueIdentTree(lvalue_ident_tree) => {
                 let name = lvalue_ident_tree.name();
-                let state = data.get(name);
-                let state = VariableStatusAnalysis::expect_declared(name, state)?;
+                let state = data.get(name).unwrap_or(VariableState::Undeclared);
+                if tree.operator().kind() == OperatorKind::Assign {
+                    VariableStatusAnalysis::expect_declared(name, state)?;
+                } else {
+                    VariableStatusAnalysis::expect_intialized(name, state)?;
+                }                
                 if state != VariableState::Initialized {
+                    // only update when needed, reassignment is fine
                     Self::update_state(data, VariableState::Initialized, name);
                 }
             }
@@ -133,7 +139,7 @@ impl Visitor<Namespace<VariableState>, (), SemanticError> for VariableStatusAnal
         tree: &crate::parser::ast::DeclarationTree,
         data: &mut Namespace<VariableState>,
     ) -> Result<(), SemanticError> {
-        Self::expect_undeclared(tree.name(), data.get(tree.name()))?;
+        Self::expect_undeclared(tree.name(), data.get(tree.name()).unwrap_or_default())?;
         let state = if tree.initializer().is_none() {
             VariableState::Declared
         } else {
@@ -160,7 +166,7 @@ impl Visitor<Namespace<VariableState>, (), SemanticError> for VariableStatusAnal
         tree: &crate::parser::ast::IdentExprTree,
         data: &mut Namespace<VariableState>,
     ) -> Result<(), SemanticError> {
-        let state = data.get(tree.name());
+        let state = data.get(tree.name()).unwrap_or_default();
         Self::expect_intialized(tree.name(), state)?;
         self.no_op.visit_ident_expr(tree, data)
     }
