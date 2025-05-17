@@ -18,10 +18,10 @@ mod interference {
     use itertools::Itertools;
     use linked_hash_map::LinkedHashMap;
 
-    use crate::ir::{IrGraph, NodeId};
+    use crate::{ir::{IrGraph, NodeId}, semantic};
     use std::{
         collections::{HashMap, HashSet},
-        fmt::Write,
+        fmt::Write, i64::MAX,
     };
 
     #[derive(Default, Debug, Clone)]
@@ -88,12 +88,10 @@ mod interference {
         }
 
         fn max_out_deg(&self) -> usize {
-            self.edges
-                .iter()
-                .max_by_key(|(_, set)| set.len())
-                .expect("graph not empty")
-                .1
-                .len()
+            let max = self.edges
+                .values()
+                .max_by_key(|set| set.len());
+            max.map(|s| s.len()).unwrap_or(0)            
         }
 
         /// Get neighbors of a node
