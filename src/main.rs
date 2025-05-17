@@ -37,13 +37,21 @@ fn main_impl() -> Result<(), Box<dyn Error>> {
     }
     let mut args = std::env::args();
     // the first arg is the programm name
-    if args.len() != 3 {
-        eprintln!("expected exactly two arguments: <INPUT_FILE> <OUTPUT_FILE>");
-        std::process::exit(3);
+    let input;
+    let output;
+    if cfg!(debug_assertions) && args.len() == 2 {
+        let mut args = args.skip(1);
+        input = PathBuf::from(args.next().expect("exactly 2 args"));
+        output = PathBuf::from(format!("out/{}", input.file_stem().expect("valid file name").to_str().unwrap()));
+    } else {
+        if args.len() != 3 {
+            eprintln!("expected exactly two arguments: <INPUT_FILE> <OUTPUT_FILE>");
+            std::process::exit(3);
+        }
+        let mut args = args.skip(1);
+        input = PathBuf::from(args.next().expect("exactly 2 args"));
+        output = PathBuf::from(args.next().expect("exactly 2 args"));
     }
-    let mut args = args.skip(1);
-    let input = PathBuf::from(args.next().expect("exactly 2 args"));
-    let output = PathBuf::from(args.next().expect("exactly 2 args"));
     let source = std::fs::read_to_string(&input)?;
     let Ok(programm) = lex_and_parse(source).inspect_err(|e| std::eprintln!("ParseError: {e}"))
     else {
@@ -54,7 +62,7 @@ fn main_impl() -> Result<(), Box<dyn Error>> {
         std::eprintln!("SemanticError: {e}");
         std::process::exit(CrowExitCodes::SemanticErr.into());
     };
-    debug!("{programm:#?}");
+    // debug!("{programm:#?}");
     let main = programm
         .top_level()
         .first()

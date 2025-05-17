@@ -79,11 +79,12 @@ mod interference {
                     }
                 }
             }
-
             ordering
                 .into_iter()
                 .filter(|id| id.needs_register(graph))
                 .collect()
+
+            
         }
 
         fn max_out_deg(&self) -> usize {

@@ -14,7 +14,6 @@ use crate::{
     parser::ast::{AssignmentTree, BlockTree, ExpressionTree, NameTree, StatementTree},
 };
 
-
 pub use regalloc::RegAlloc;
 mod liveness;
 mod regalloc;
@@ -26,6 +25,9 @@ pub trait CodeGenerator {
 pub trait RegisterProvider {
     fn allocate(&mut self, graph: &IrGraph) -> Result<(), Box<dyn std::error::Error>>;
     fn register(&self, node: NodeId) -> Alloc;
+    fn required_stack_size(&self) -> usize {
+        0
+    }
 }
 
 #[derive(Default)]
@@ -149,6 +151,14 @@ where
         self.builder.push(instr);
     }
 
+    fn emit_return(&mut self) {
+        self.emit(Asm::Addq(
+            Location::Immediate(self.provider.required_stack_size() as i64),
+            Register::Rsp.into(),
+        ));
+        self.emit(Asm::Ret);
+    }
+
     fn scan(&mut self, node: NodeId, visited: &mut HashSet<NodeId>) {
         for pred in node.predecessors(self.graph) {
             if visited.insert(*pred) {
@@ -164,7 +174,7 @@ where
             NodeKind::Return => {
                 let pred = node.predecessor_skip_proj(self.graph, NodeKind::RETURN_RESULT);
                 self.emit(Asm::Movq(self.reg(pred).into(), Register::Rax.into()));
-                self.emit(Asm::Ret);
+                self.emit_return();
             }
             NodeKind::Phi => panic!("phi not valid in code_gen"),
             _ => {}
@@ -228,10 +238,15 @@ impl<'g, P> CodeGenerator for X86_64Asm<'g, P>
 where
     P: RegisterProvider,
 {
-    fn generate(mut self) -> Result<String, Box<dyn std::error::Error>> {        
+    fn generate(mut self) -> Result<String, Box<dyn std::error::Error>> {
         self.provider.allocate(self.graph)?;
         let mut code = String::new();
         let mut visited = HashSet::new();
+        // subq $80, %rsp
+        self.emit(Asm::Subq(
+            Location::Immediate(self.provider.required_stack_size() as i64),
+            Register::Rsp.into(),
+        ));
         self.scan(self.graph.end_block(), &mut visited);
         write!(code, "_{}:\n", self.graph.name())?;
         write!(

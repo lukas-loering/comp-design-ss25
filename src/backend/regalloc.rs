@@ -6,11 +6,11 @@ use strum::IntoEnumIterator;
 
 use crate::ir::NodeId;
 
-use super::{liveness::Liveness, Location, Register, RegisterProvider};
+use super::{Location, Register, RegisterProvider, liveness::Liveness};
 
 #[derive(Debug, Clone, Default)]
 pub struct RegAlloc {
-    color_to_reg: HashMap<u32, Alloc>,
+    color_to_reg: LinkedHashMap<u32, Alloc>,
     coloring: LinkedHashMap<NodeId, u32>,
 }
 
@@ -24,19 +24,22 @@ impl From<Alloc> for Location {
     fn from(value: Alloc) -> Self {
         match value {
             Alloc::Register(register) => Location::Register(register),
-            Alloc::StackSlot(byte_offset) if byte_offset == 0 => Location::Indirect(RegAlloc::SPILL_REGISTER),
-            Alloc::StackSlot(byte_offset) => Location::IndirectDisplacement(byte_offset, RegAlloc::SPILL_REGISTER),
+            Alloc::StackSlot(byte_offset) if byte_offset == 0 => Location::Indirect(Register::Rsp),
+            Alloc::StackSlot(byte_offset) => {
+                Location::IndirectDisplacement(byte_offset, Register::Rsp)
+            }
         }
     }
 }
 
 impl RegAlloc {
     const SPILL_REGISTER: Register = Register::R11;
+    // move stack slot by 8 bytes, we target x86_64. We pretend everything is 8 bytes big for now.
+    const SLOT_SIZE: usize = 8;
 
-    
-    fn alloc(coloring: &LinkedHashMap<NodeId, u32>) -> HashMap<u32, Alloc> {
-        let mut color_to_reg = HashMap::new();
-        let colors = coloring.values().into_iter().sorted();
+    fn alloc(coloring: &LinkedHashMap<NodeId, u32>) -> LinkedHashMap<u32, Alloc> {
+        let mut color_to_reg = LinkedHashMap::new();
+        let colors = coloring.values().into_iter().unique().sorted();
         let mut registers = Register::iter();
         let mut current_stack_slot = 0;
         'outer: for &color in colors {
@@ -44,37 +47,62 @@ impl RegAlloc {
                 if Self::is_reserved(register) {
                     continue;
                 }
-                color_to_reg.insert(color, Alloc::Register(register));
+                let reg = Alloc::Register(register);
+                color_to_reg.insert(color, reg);
+                tracing::trace!("{color}->{reg:?}");
                 continue 'outer;
             }
-            color_to_reg.insert(color, Alloc::StackSlot(current_stack_slot));
-            current_stack_slot += 8; // move stack slot by 8 bytes, we target x86_64. We pretend everything is 8 bytes big for now.            
-
+            let slot = Alloc::StackSlot(current_stack_slot);
+            color_to_reg.insert(color, slot);
+            tracing::trace!("{color}->{slot:?}");
+            current_stack_slot += Self::SLOT_SIZE;
         }
 
         color_to_reg
     }
 
-    
     fn is_reserved(reg: Register) -> bool {
         matches!(
             reg,
             Register::Rax | Register::Rdx | Register::Rsp | Register::Rbp
         ) || reg == Self::SPILL_REGISTER
-    }    
+    }
 }
-
 
 impl RegisterProvider for RegAlloc {
     fn allocate(&mut self, graph: &crate::ir::IrGraph) -> Result<(), Box<dyn std::error::Error>> {
         let liveness = Liveness::generate(graph);
         self.coloring = liveness.coloring(graph);
+        tracing::debug!("Coloring:\n{:?}", self.coloring);
         self.color_to_reg = Self::alloc(&self.coloring);
+        tracing::debug!("Reg->Color:\n{:?}", self.color_to_reg);
+
         Ok(())
     }
 
     fn register(&self, node: NodeId) -> Alloc {
         let color = self.coloring.get(&node).expect("node to be colored");
         *self.color_to_reg.get(color).expect("color to have slot")
+    }
+
+    fn required_stack_size(&self) -> usize {
+        let offset = self
+            .color_to_reg
+            .values()
+            .filter_map(|alloc| {
+                if let Alloc::StackSlot(offset) = *alloc {
+                    Some(offset)
+                } else {
+                    None
+                }
+            })
+            .max();
+        let Some(offset) = offset else {
+            return 0;
+        };
+
+        // Calling conventions wants alignment to 16 bytes
+        assert_eq!(8, Self::SLOT_SIZE);
+        offset + (Self::SLOT_SIZE * 2)
     }
 }
