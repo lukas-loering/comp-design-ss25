@@ -132,7 +132,13 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(id: NodeId, block: NodeId, predecessors: Vec<NodeId>, kind: NodeKind, data: Option<Box<dyn Any>>) -> Self {
+    pub fn new(
+        id: NodeId,
+        block: NodeId,
+        predecessors: Vec<NodeId>,
+        kind: NodeKind,
+        data: Option<Box<dyn Any>>,
+    ) -> Self {
         Self {
             id,
             block,
@@ -148,9 +154,9 @@ impl Node {
         kind: NodeKind,
         block: NodeId,
         predecessors: &[NodeId],
-    ) -> OptimizableNode<'g> {        
+    ) -> OptimizableNode<'g> {
         let id = g.next_node_id();
-        OptimizableNode::new(Node::new(id, block, predecessors.to_vec(), kind, None), g)        
+        OptimizableNode::new(Node::new(id, block, predecessors.to_vec(), kind, None), g)
     }
 
     fn new_node_with_data<'g, T: 'static>(
@@ -159,9 +165,12 @@ impl Node {
         block: NodeId,
         data: T,
         predecessors: &[NodeId],
-    ) -> OptimizableNode<'g> {        
+    ) -> OptimizableNode<'g> {
         let id = g.next_node_id();
-        OptimizableNode::new(Node::new(id, block, predecessors.to_vec(), kind, Some(Box::new(data))), g)        
+        OptimizableNode::new(
+            Node::new(id, block, predecessors.to_vec(), kind, Some(Box::new(data))),
+            g,
+        )
     }
 
     pub fn get_data<T: 'static>(&self) -> Option<&T> {
@@ -186,12 +195,11 @@ impl Node {
     pub fn kind(&self) -> NodeKind {
         self.kind
     }
-    
+
     pub fn debug(&self) -> DebugInfo {
         self.debug
     }
 
-    
     /// For most nodes, it checks for the same node kind and node id
     ///
     /// For const int nodes:
@@ -199,7 +207,7 @@ impl Node {
     ///
     /// For commutative binary operations:
     ///   - the regular and swapped order of the operations are comapred
-    fn eq(&self, other: NodeId, g: &IrGraph) -> bool {        
+    fn eq(&self, other: NodeId, g: &IrGraph) -> bool {
         let other = g.get(other);
 
         if self.kind != other.kind {
@@ -233,6 +241,15 @@ impl Node {
 }
 
 impl NodeId {
+    pub fn needs_register(self, g: &IrGraph) -> bool {
+        let kind = g.get(self).kind();
+        let no_register_needed = matches!(
+            kind,
+            NodeKind::Projection(_) | NodeKind::Start | NodeKind::Block | NodeKind::Return
+        );
+        !no_register_needed
+    }
+
     fn set_predecessor(self, g: &mut IrGraph, idx: usize, node: NodeId) {
         let predecessor = g
             .get(self)
@@ -273,7 +290,6 @@ impl NodeId {
         g.register_successor(node, self);
     }
 
-    
     /// For most nodes, it checks for the same node kind and node id
     ///
     /// For const int nodes:
@@ -313,7 +329,6 @@ impl NodeId {
             (_, _) => self == other.id,
         }
     }
-
 }
 
 impl NodeId {

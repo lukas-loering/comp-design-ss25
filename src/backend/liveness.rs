@@ -15,29 +15,99 @@ use itertools::Itertools;
 
 mod interference {
 
+    use itertools::Itertools;
+    use linked_hash_map::LinkedHashMap;
+
     use crate::ir::{IrGraph, NodeId};
-    use std::fmt::Write;
+    use std::{
+        collections::{HashMap, HashSet},
+        fmt::Write,
+    };
 
     #[derive(Default, Debug, Clone)]
     pub(super) struct InterferenceGraph {
-        edges: Vec<(NodeId, NodeId)>,
+        edges: HashMap<NodeId, HashSet<NodeId>>,
     }
 
     impl InterferenceGraph {
+        pub fn coloring(&self, graph: &IrGraph) -> LinkedHashMap<NodeId, u32> {
+            let max_color = self.max_out_deg() as u32;
+            let mut coloring = LinkedHashMap::new();
+            let mut used_colors = HashSet::new();
+            let ordering = self.maximum_cardinality_search(graph);
+            'next_node: for node in ordering {
+                for neighbour in self.neighbors(node) {
+                    if let Some(color) = coloring.get(&neighbour) {
+                        used_colors.insert(*color);
+                    }
+                }
+                for color in 0..=max_color {
+                    if !used_colors.contains(&color) {
+                        coloring.insert(node, color);
+                        used_colors.clear();
+                        continue 'next_node;
+                    }
+                }
+                panic!("no more colors available");
+            }
+            coloring
+        }
+
+        fn maximum_cardinality_search(&self, graph: &IrGraph) -> Vec<NodeId> {
+            let mut weights = HashMap::<NodeId, i32>::new();
+            let mut visited = HashSet::new();
+            let mut ordering: Vec<NodeId> = Vec::with_capacity(graph.nodes().len());
+
+            let mut unvisited: HashSet<NodeId> =
+                graph.nodes().keys().into_iter().copied().collect();
+
+            for _ in 0..unvisited.len() {
+                // Select node with maximum weight from unvisited nodes
+                let &max_node = unvisited
+                    .iter()
+                    .max_by_key(|u| weights.get(u).unwrap_or(&0))
+                    .expect("Graph should not be empty");
+
+                ordering.push(max_node);
+                visited.insert(max_node);
+                unvisited.remove(&max_node);
+
+                // Increase weight of unvisited neighbors
+                for &neighbor in self.neighbors(max_node).iter() {
+                    if !visited.contains(&neighbor) {
+                        *weights.entry(neighbor).or_default() += 1;
+                    }
+                }
+            }
+
+            ordering
+                .into_iter()
+                .filter(|id| id.needs_register(graph))
+                .collect()
+        }
+
+        fn max_out_deg(&self) -> usize {
+            self.edges
+                .iter()
+                .max_by_key(|(_, set)| set.len())
+                .expect("graph not empty")
+                .1
+                .len()
+        }
+
+        /// Get neighbors of a node
+        fn neighbors(&self, v: NodeId) -> HashSet<NodeId> {
+            self.edges.get(&v).cloned().unwrap_or_default()
+        }
         pub(super) fn add_edge(&mut self, mut n1: NodeId, mut n2: NodeId) {
             if n1 == n2 {
                 panic!("interference graph must be irreflexive");
-            } else if n2 > n1 {
-                let tmp = n1;
-                n1 = n2;
-                n2 = tmp;
-            }
-            if !self.edges.contains(&(n1, n2)) {
-                self.edges.push((n1, n2));
-            }
+            };
+            self.edges.entry(n1).or_default().insert(n2);
+            self.edges.entry(n2).or_default().insert(n1);
         }
 
-        pub(super) fn edges(self) -> Vec<(NodeId, NodeId)> {
+        pub(super) fn edges(self) -> HashMap<NodeId, HashSet<NodeId>> {
             self.edges
         }
 
@@ -54,8 +124,10 @@ edge [arrowhead="none"];"#
             for (id, node) in g.nodes() {
                 write!(result, "{id} [label=\"{}\"]\n", node.info()).unwrap();
             }
-            for (from, to) in &self.edges {
-                write!(result, "{from} -> {to}\n").unwrap();
+            for (from, set) in &self.edges {
+                for to in set.iter().filter(|to| from < to) {
+                    write!(result, "{from} -> {to}\n").unwrap();
+                }
             }
             write!(result, "}}\n").unwrap();
             result
@@ -66,6 +138,12 @@ edge [arrowhead="none"];"#
 #[derive(Debug, Clone)]
 pub struct Liveness {
     edges: InterferenceGraph,
+}
+
+impl Liveness {
+    pub fn coloring(&self, g: &IrGraph) -> LinkedHashMap<NodeId, u32> {
+        self.edges.coloring(g)
+    }
 }
 
 #[derive(Default, Debug)]

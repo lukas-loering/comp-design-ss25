@@ -1,7 +1,7 @@
 #![allow(unused)]
 use std::{error::Error, path::PathBuf};
 
-use backend::{CodeGenerator, TrivialRegisterProvider, X86_64Asm};
+use backend::{CodeGenerator, RegAlloc, TrivialRegisterProvider, X86_64Asm};
 use crow::CrowExitCodes;
 use ir::{SsaTranslation, debug::GraphVizPrinter, optimize::LocalValueNumbering};
 use lexer::{Lexer, tokens::Token};
@@ -65,7 +65,7 @@ fn main_impl() -> Result<(), Box<dyn Error>> {
         let debug_graph = GraphVizPrinter::print(&ir);
         std::fs::write(format!("{}.viz", &output.display()), debug_graph)?;
     }
-    let mut code_gen = X86_64Asm::new(&ir, TrivialRegisterProvider::default()).generate()?;
+    let mut code_gen = X86_64Asm::new(&ir, RegAlloc::default()).generate()?;
 
     std::fs::write(
         format!("{}.s", &output.display()),

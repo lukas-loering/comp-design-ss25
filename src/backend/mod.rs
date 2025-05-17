@@ -6,13 +6,18 @@ use std::{
 
 use liveness::Liveness;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use regalloc::Alloc;
+use strum::EnumIter;
 
 use crate::{
     ir::{BinaryOp, IrGraph, NodeId, NodeKind, NodeProvider},
     parser::ast::{AssignmentTree, BlockTree, ExpressionTree, NameTree, StatementTree},
 };
 
+
+pub use regalloc::RegAlloc;
 mod liveness;
+mod regalloc;
 
 pub trait CodeGenerator {
     fn generate(self) -> Result<String, Box<dyn std::error::Error>>;
@@ -20,7 +25,7 @@ pub trait CodeGenerator {
 
 pub trait RegisterProvider {
     fn allocate(&mut self, graph: &IrGraph) -> Result<(), Box<dyn std::error::Error>>;
-    fn register(&self, node: NodeId) -> Register;
+    fn register(&self, node: NodeId) -> Alloc;
 }
 
 #[derive(Default)]
@@ -29,11 +34,12 @@ pub struct TrivialRegisterProvider {
 }
 
 impl RegisterProvider for TrivialRegisterProvider {
-    fn register(&self, node: NodeId) -> Register {
-        *self
+    fn register(&self, node: NodeId) -> Alloc {
+        let r = *self
             .map
             .get(&node)
-            .expect(&format!("node {node} should have a register"))
+            .expect(&format!("node {node} should have a register"));
+        Alloc::Register(r)
     }
 
     fn allocate(&mut self, graph: &IrGraph) -> Result<(), Box<dyn std::error::Error>> {
@@ -56,7 +62,7 @@ impl TrivialRegisterProvider {
                 self.scan(graph, *pred, visited)?;
             }
         }
-        if self.needs_register(graph, node) {
+        if node.needs_register(graph) {
             let next = u8::try_from(u8::from(Register::MIN) + self.map.len() as u8)?;
             let register = Register::try_from(next)?;
             // we just cheked that this register is unused
@@ -66,18 +72,9 @@ impl TrivialRegisterProvider {
         }
         Ok(())
     }
-
-    fn needs_register(&self, graph: &IrGraph, node: NodeId) -> bool {
-        let kind = graph.get(node).kind();
-        let no_register_needed = matches!(
-            kind,
-            NodeKind::Projection(_) | NodeKind::Start | NodeKind::Block | NodeKind::Return
-        );
-        !no_register_needed
-    }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, TryFromPrimitive, IntoPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, TryFromPrimitive, IntoPrimitive, EnumIter)]
 #[repr(u8)]
 pub enum Register {
     Rax,
@@ -162,7 +159,7 @@ where
             NodeKind::BinaryOp(binary_op) => self.binary(binary_op, node),
             NodeKind::ConstInt => {
                 let value = *self.graph.get(node).get_data::<i64>().unwrap();
-                self.emit(Asm::Movq(Source::Immediate(value), self.reg(node).into()));
+                self.emit(Asm::Movq(Location::Immediate(value), self.reg(node).into()));
             }
             NodeKind::Return => {
                 let pred = node.predecessor_skip_proj(self.graph, NodeKind::RETURN_RESULT);
@@ -174,7 +171,7 @@ where
         };
     }
 
-    fn reg(&self, node: NodeId) -> Register {
+    fn reg(&self, node: NodeId) -> Alloc {
         self.provider.register(node)
     }
 
@@ -186,12 +183,12 @@ where
         match binary_op {
             BinaryOp::Add => {
                 // d <- s1 + s2
-                self.emit(Asm::Movq(s1.into(), d));
-                self.emit(Asm::Addq(s2.into(), d));
+                self.emit(Asm::Movq(s1.into(), d.into()));
+                self.emit(Asm::Addq(s2.into(), d.into()));
             }
             BinaryOp::Sub => {
-                self.emit(Asm::Movq(s1.into(), d));
-                self.emit(Asm::Subq(s2.into(), d));
+                self.emit(Asm::Movq(s1.into(), d.into()));
+                self.emit(Asm::Subq(s2.into(), d.into()));
             }
             BinaryOp::Mul => {
                 // d <- s1 * s2
@@ -231,9 +228,7 @@ impl<'g, P> CodeGenerator for X86_64Asm<'g, P>
 where
     P: RegisterProvider,
 {
-    fn generate(mut self) -> Result<String, Box<dyn std::error::Error>> {
-        let liveness = Liveness::generate(self.graph);
-        tracing::debug!("{}", liveness.show(self.graph));
+    fn generate(mut self) -> Result<String, Box<dyn std::error::Error>> {        
         self.provider.allocate(self.graph)?;
         let mut code = String::new();
         let mut visited = HashSet::new();
@@ -253,32 +248,36 @@ where
 
 #[derive(Debug)]
 enum Asm {
-    Movq(Source, Register),
-    Addq(Source, Register),
-    Subq(Source, Register),
-    Imulq(Source),
-    Idivq(Source),
+    Movq(Location, Location),
+    Addq(Location, Location),
+    Subq(Location, Location),
+    Imulq(Location),
+    Idivq(Location),
     Cqto,
     Ret,
 }
 
-#[derive(Debug)]
-enum Source {
+#[derive(Debug, Clone)]
+enum Location {
     Register(Register),
+    Indirect(Register),
+    IndirectDisplacement(usize, Register),
     Immediate(i64),
 }
 
-impl From<Register> for Source {
+impl From<Register> for Location {
     fn from(value: Register) -> Self {
         Self::Register(value)
     }
 }
 
-impl std::fmt::Display for Source {
+impl std::fmt::Display for Location {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Source::Register(register) => write!(f, "{register}"),
-            Source::Immediate(v) => write!(f, "${v}"),
+            Location::Register(register) => write!(f, "{register}"),
+            Location::Immediate(v) => write!(f, "${v}"),
+            Location::Indirect(register) => write!(f, "({register})"),
+            Location::IndirectDisplacement(offset, register) => write!(f, "{offset}({register})"),
         }
     }
 }
