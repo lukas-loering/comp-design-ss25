@@ -170,7 +170,13 @@ where
                     self.builder.push(instr);
                 }
             }
-            Asm::Imulq(_) | Asm::Idivq(_) | Asm::Cqto | Asm::Ret => {
+            Asm::Imulq(_)
+            | Asm::Idivq(_)
+            | Asm::Cqto
+            | Asm::Ret
+            | Asm::Label(_, _)
+            | Asm::Jne(_, _)
+            | Asm::Cmpq(_, _) => {
                 self.builder.push(instr);
             }
         };
@@ -260,6 +266,15 @@ where
                 // movq %rax d  ; quotiend store here
                 // movq %rdx d  ; remainder store here
 
+                self.emit(Asm::Cmpq(Location::Immediate(-1), s2.into()));
+                self.emit(Asm::Jne("ok", node));
+                self.emit(Asm::Cmpq(Location::Immediate(-2147483648), s1.into()));
+                self.emit(Asm::Jne("ok", node));
+
+                self.emit(Asm::Movq(Location::Immediate(0), s2.into()));
+                self.emit(Asm::Idivq(s2.into()));
+
+                self.emit(Asm::Label("ok", node));
                 self.emit(Asm::Movq(s1.into(), Register::Rax.into()));
                 self.emit(Asm::Cqto);
                 self.emit(Asm::Idivq(s2.into()));
@@ -313,6 +328,9 @@ enum Asm {
     Subq(Location, Location),
     Imulq(Location),
     Idivq(Location),
+    Label(&'static str, NodeId),
+    Jne(&'static str, NodeId),
+    Cmpq(Location, Location),
     Cqto,
     Ret,
 }
@@ -361,6 +379,9 @@ impl std::fmt::Display for Asm {
             Asm::Idivq(s) => write!(f, "idivq {s}"),
             Asm::Cqto => write!(f, "cqto"),
             Asm::Ret => write!(f, "ret"),
+            Asm::Label(s, node_id) => write!(f, ".{s}{}:", node_id),
+            Asm::Jne(s, node_id) => write!(f, "jne .{s}{}", node_id),
+            Asm::Cmpq(s, d) => write!(f, "cmpq {s}, {d}"),
         }
     }
 }
