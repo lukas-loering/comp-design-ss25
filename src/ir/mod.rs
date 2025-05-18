@@ -2,7 +2,7 @@ use std::{
     any::Any,
     cell::RefCell,
     collections::HashMap,
-    fmt::{Display, format},
+    fmt::{format, Debug, Display},
     rc::Rc,
 };
 
@@ -99,7 +99,7 @@ impl AsMut<IrGraph> for &mut IrGraph {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NodeId(u32);
 
 impl NodeId {
@@ -224,10 +224,10 @@ impl Node {
                 let lhs2 = other.predecessors[BinaryOp::LEFT];
                 let rhs1 = self.predecessors[BinaryOp::RIGHT];
                 let rhs2 = other.predecessors[BinaryOp::RIGHT];
-                let mut equal = lhs1.eq(lhs2, g) && rhs1.eq(rhs2, g);
+                let mut equal = lhs1 == lhs2 && rhs1 == rhs2;
                 // for commutative operations we check if inverted operations are equal
                 if !equal && matches!(o1, BinaryOp::Add | BinaryOp::Mul) {
-                    equal = lhs1.eq(rhs1, g) && lhs2.eq(rhs2, g);
+                    equal = lhs1 == rhs1 && lhs2 == rhs2;
                 };
                 equal
             }
@@ -299,35 +299,7 @@ impl NodeId {
     ///   - the regular and swapped order of the operations are comapred
     fn eq(self, other: Self, g: &IrGraph) -> bool {
         let node = g.get(self);
-        let other = g.get(other);
-
-        if node.kind != other.kind {
-            return false;
-        }
-
-        match (node.kind, other.kind) {
-            (NodeKind::BinaryOp(o1), NodeKind::BinaryOp(o2)) => {
-                // conservative approach for binary ops which can cause side effects
-                if matches!(o1, BinaryOp::Div | BinaryOp::Mod) {
-                    return self == other.id;
-                }
-                let lhs1 = node.predecessors[BinaryOp::LEFT];
-                let lhs2 = other.predecessors[BinaryOp::LEFT];
-                let rhs1 = node.predecessors[BinaryOp::RIGHT];
-                let rhs2 = other.predecessors[BinaryOp::RIGHT];
-                let mut equal = lhs1.eq(lhs2, g) && rhs1.eq(rhs2, g);
-                // for commutative operations we check if inverted operations are equal
-                if !equal && matches!(o1, BinaryOp::Add | BinaryOp::Mul) {
-                    equal = lhs1.eq(rhs1, g) && lhs2.eq(rhs2, g);
-                };
-                equal
-            }
-            (NodeKind::ConstInt, NodeKind::ConstInt) => {
-                node.block == other.block
-                    && (*node.get_data::<i64>().unwrap()) == (*other.get_data::<i64>().unwrap())
-            }
-            (_, _) => self == other.id,
-        }
+        node.eq(other, g)
     }
 }
 

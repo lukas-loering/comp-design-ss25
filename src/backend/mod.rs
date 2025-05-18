@@ -25,6 +25,7 @@ pub trait CodeGenerator {
 pub trait RegisterProvider {
     fn allocate(&mut self, graph: &IrGraph) -> Result<(), Box<dyn std::error::Error>>;
     fn register(&self, node: NodeId) -> Alloc;
+    fn spill_register(&self) -> Alloc;
     fn required_stack_size(&self) -> usize {
         0
     }
@@ -49,6 +50,10 @@ impl RegisterProvider for TrivialRegisterProvider {
         visited.insert(graph.end_block());
         self.scan(graph, graph.end_block(), &mut visited)?;
         Ok(())
+    }
+    
+    fn spill_register(&self) -> Alloc {
+        panic!("this dont spill")
     }
 }
 
@@ -147,8 +152,28 @@ where
         }
     }
 
-    fn emit(&mut self, instr: Asm) {
-        self.builder.push(instr);
+    fn emit(&mut self, mut instr: Asm) {
+        match &mut instr {
+            Asm::Movq(l1, l2) |
+            Asm::Addq(l1, l2) | 
+            Asm::Subq(l1, l2) => 
+            {
+                if l1.is_indirect() && l2.is_indirect() {                    
+                    let spill_reg = self.provider.spill_register().into();
+                    self.emit(Asm::Movq(*l1, spill_reg));
+                    *l1 = spill_reg;
+                    self.emit(instr);
+                } else {
+                    self.builder.push(instr);
+                }
+            },
+            Asm::Imulq(_) |
+            Asm::Idivq(_) |
+            Asm::Cqto |
+            Asm::Ret   => {
+                self.builder.push(instr);
+            }
+        };
     }
 
     fn emit_return(&mut self) {
@@ -193,12 +218,15 @@ where
         match binary_op {
             BinaryOp::Add => {
                 // d <- s1 + s2
+                // if s2 and d have same register this breaks
+                self.emit(Asm::Movq(s2.into(), self.provider.spill_register().into()));
                 self.emit(Asm::Movq(s1.into(), d.into()));
-                self.emit(Asm::Addq(s2.into(), d.into()));
+                self.emit(Asm::Addq( self.provider.spill_register().into(), d.into()));
             }
             BinaryOp::Sub => {
+                self.emit(Asm::Movq(s2.into(), self.provider.spill_register().into()));
                 self.emit(Asm::Movq(s1.into(), d.into()));
-                self.emit(Asm::Subq(s2.into(), d.into()));
+                self.emit(Asm::Subq( self.provider.spill_register().into(), d.into()));
             }
             BinaryOp::Mul => {
                 // d <- s1 * s2
@@ -240,6 +268,7 @@ where
 {
     fn generate(mut self) -> Result<String, Box<dyn std::error::Error>> {
         self.provider.allocate(self.graph)?;
+        tracing::info!("completed register allocation");
         let mut code = String::new();
         let mut visited = HashSet::new();
         // subq $80, %rsp
@@ -253,15 +282,16 @@ where
             code,
             "{}",
             self.builder
-                .into_iter()
+            .into_iter()
                 .map(|instr| format!("  {instr}\n"))
                 .collect::<String>()
         );
+        tracing::info!("completed code generation");
         Ok(code)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 enum Asm {
     Movq(Location, Location),
     Addq(Location, Location),
@@ -272,12 +302,18 @@ enum Asm {
     Ret,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 enum Location {
     Register(Register),
     Indirect(Register),
     IndirectDisplacement(usize, Register),
     Immediate(i64),
+}
+
+impl Location {
+    pub fn is_indirect(&self) -> bool {
+        matches!(self, Location::Indirect(_) | Location::IndirectDisplacement(_, _))
+    }
 }
 
 impl From<Register> for Location {

@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, time::Instant};
 
 use thiserror::Error;
 
@@ -105,6 +105,7 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &crate::parser::ast::AssignmentTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        tracing::trace!("visit_assignment {tree:?}");
         data.push_span(tree);
         let constructor: Option<Box<dyn FnMut(NodeId, NodeId, &mut SsaTranslation) -> NodeId>> =
             match tree.operator().kind() {
@@ -160,6 +161,7 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &crate::parser::ast::BinaryOpTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        tracing::trace!("visit_binary_op {tree:?}");
         data.push_span(tree);
         let left = tree.lhs().accept(self, data).unwrap().unwrap();
         let right = tree.rhs().accept(self, data).unwrap().unwrap();
@@ -186,6 +188,7 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &crate::parser::ast::BlockTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        tracing::trace!("visit_block {tree:?}");
         data.push_span(tree);
         for statement in tree.statements() {
             statement.accept(self, data);
@@ -203,6 +206,7 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &crate::parser::ast::DeclarationTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        tracing::trace!("visit_declaration {tree:?}");
         data.push_span(tree);
         if let Some(initializer) = tree.initializer() {
             let rhs = initializer.accept(self, data).unwrap().unwrap();
@@ -218,6 +222,7 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &FunctionTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        tracing::trace!("visit_function {tree:?}");
         data.push_span(tree);
         let start = data.constructor.new_start();
         let side_effect = data.constructor.new_side_effect_proj(start);
@@ -232,6 +237,7 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &crate::parser::ast::IdentExprTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        tracing::trace!("visit_ident_expr {tree:?}");
         data.push_span(tree);
         let current_block = data.current_block();
         let value = Ok(Some(
@@ -246,6 +252,7 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &crate::parser::ast::LiteralTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        tracing::trace!("visit_literal {tree:?}");
         data.push_span(tree);
         let value = Ok(Some(
             data.constructor.new_const_int(tree.parse_value().unwrap()),
@@ -275,6 +282,7 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &crate::parser::ast::NegateTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        tracing::trace!("visit_negate {tree:?}");
         data.push_span(tree);
         let node = tree.expr_tree().accept(self, data).unwrap().unwrap();
         let zero = data.constructor.new_const_int(0);
@@ -296,6 +304,7 @@ impl Visitor<SsaTranslation, Option<NodeId>, SsaError> for SsaTranslationVisitor
         tree: &crate::parser::ast::ReturnTree,
         data: &mut SsaTranslation,
     ) -> Result<Option<NodeId>, SsaError> {
+        tracing::trace!("visit_return {tree:?}");
         data.push_span(tree);
         let node = tree.expr().accept(self, data).unwrap().unwrap();
         let ret = data.constructor.new_return(node);

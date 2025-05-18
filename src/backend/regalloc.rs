@@ -64,7 +64,14 @@ impl RegAlloc {
     fn is_reserved(reg: Register) -> bool {
         matches!(
             reg,
-            Register::Rax | Register::Rdx | Register::Rsp | Register::Rbp
+            // use for return
+            Register::Rax |
+            // callee-saved
+            Register::Rbx | Register::R12 | Register::R13 | Register::R14 | Register::R15 |
+            // use for floating point ops
+            Register::Rdx | 
+            // stack stuff
+            Register::Rsp | Register::Rbp 
         ) || reg == Self::SPILL_REGISTER
     }
 }
@@ -72,7 +79,11 @@ impl RegAlloc {
 impl RegisterProvider for RegAlloc {
     fn allocate(&mut self, graph: &crate::ir::IrGraph) -> Result<(), Box<dyn std::error::Error>> {
         let liveness = Liveness::generate(graph);
+        tracing::info!("completed liveness calculation");
+        tracing::trace!("Liveness:\n{}", liveness.show(graph));
+
         self.coloring = liveness.coloring(graph);
+        tracing::info!("completed coloring");
         tracing::debug!("Coloring:\n{:?}", self.coloring);
         self.color_to_reg = Self::alloc(&self.coloring);
         tracing::debug!("Reg->Color:\n{:?}", self.color_to_reg);
@@ -104,5 +115,9 @@ impl RegisterProvider for RegAlloc {
         // Calling conventions wants alignment to 16 bytes
         assert_eq!(8, Self::SLOT_SIZE);
         offset + (Self::SLOT_SIZE * 2)
+    }
+
+    fn spill_register(&self) -> Alloc {
+        Alloc::Register(Self::SPILL_REGISTER)
     }
 }

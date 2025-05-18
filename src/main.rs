@@ -30,7 +30,7 @@ fn main() {
 fn main_impl() -> Result<(), Box<dyn Error>> {
     if cfg!(debug_assertions) {
         let subscriber = tracing_subscriber::FmtSubscriber::builder()
-            .with_max_level(Level::TRACE)
+            .with_max_level(Level::DEBUG)
             .finish();
         tracing::subscriber::set_global_default(subscriber)
             .expect("setting default subscriber failed");
@@ -42,7 +42,14 @@ fn main_impl() -> Result<(), Box<dyn Error>> {
     if cfg!(debug_assertions) && args.len() == 2 {
         let mut args = args.skip(1);
         input = PathBuf::from(args.next().expect("exactly 2 args"));
-        output = PathBuf::from(format!("out/{}", input.file_stem().expect("valid file name").to_str().unwrap()));
+        output = PathBuf::from(format!(
+            "out/{}",
+            input
+                .file_stem()
+                .expect("valid file name")
+                .to_str()
+                .unwrap()
+        ));
     } else {
         if args.len() != 3 {
             eprintln!("expected exactly two arguments: <INPUT_FILE> <OUTPUT_FILE>");
@@ -69,6 +76,7 @@ fn main_impl() -> Result<(), Box<dyn Error>> {
         .expect("expect at least one function")
         .clone();
     let ir = SsaTranslation::new(main, LocalValueNumbering::default()).translate();
+    tracing::info!("completed SSA translation");
     if cfg!(debug_assertions) {
         let debug_graph = GraphVizPrinter::print(&ir);
         std::fs::write(format!("{}.viz", &output.display()), debug_graph)?;

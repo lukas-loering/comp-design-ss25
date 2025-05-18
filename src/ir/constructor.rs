@@ -7,7 +7,8 @@ use std::{
 use crate::parser::symbol::Name;
 
 use super::{
-    optimize::{OptimizableNode, Optimizer}, BinaryOp, IrGraph, Node, NodeId, NodeKind, NodeProvider, ProjectionInfo
+    BinaryOp, IrGraph, Node, NodeId, NodeKind, NodeProvider, ProjectionInfo,
+    optimize::{OptimizableNode, Optimizer},
 };
 
 pub struct GraphConstructor {
@@ -18,7 +19,7 @@ pub struct GraphConstructor {
     current_side_effect: HashMap<NodeId, NodeId>,
     incomplete_side_effect_phis: HashMap<NodeId, NodeId>,
     sealed_blocks: HashSet<NodeId>,
-    current_block: NodeId,    
+    current_block: NodeId,
 }
 
 impl GraphConstructor {
@@ -65,7 +66,9 @@ impl GraphConstructor {
                 .or_default()
                 .insert(variable.clone(), value);
             value
-        } else if let Some(previous_block) = block.predecessors(&self.graph).first() {
+        } else if block.predecessors(&self.graph).len() == 1 {
+            // Unwrap: we just checked that we have exactly one element
+            let previous_block = block.predecessors(&self.graph).first().unwrap();
             self.read_variable(variable.clone(), self.get(*previous_block).block)
         } else {
             let value = self.new_phi();
@@ -97,7 +100,9 @@ impl GraphConstructor {
                 old.is_none(),
                 "double read_side_effect_recursive for {block:?}"
             );
-        } else if let Some(previous_block) = block.predecessors(&self.graph).first() {
+        } else if block.predecessors(&self.graph).len() == 1 {
+            // We just checked that we have exactly one predecessor
+            let previous_block = block.predecessors(&self.graph).first().unwrap();
             val = self.read_side_effect(self.get(*previous_block).block);
         } else {
             val = self.new_phi();
@@ -156,8 +161,7 @@ impl GraphConstructor {
     }
 }
 
-impl GraphConstructor {  
-
+impl GraphConstructor {
     pub fn new_phi(&mut self) -> NodeId {
         let node = Node::new_node(&mut self.graph, NodeKind::Phi, self.current_block, &[]);
         self.optimizer.transform(node)
@@ -220,9 +224,9 @@ impl GraphConstructor {
 
     pub fn new_const_int(&mut self, value: i64) -> NodeId {
         let start_block = self.graph.start_block;
-        let node = Node::new_node_with_data(&mut self.graph, NodeKind::ConstInt, start_block, value,&[]);
-        self.optimizer.transform(node)        
-        
+        let node =
+            Node::new_node_with_data(&mut self.graph, NodeKind::ConstInt, start_block, value, &[]);
+        self.optimizer.transform(node)
     }
 
     pub fn new_side_effect_proj(&mut self, node: NodeId) -> NodeId {
@@ -231,7 +235,8 @@ impl GraphConstructor {
             NodeKind::Projection(ProjectionInfo::SideEffect),
             self.current_block,
             &[node],
-        ).accept()
+        )
+        .accept()
     }
 
     pub fn new_result_proj(&mut self, node: NodeId) -> NodeId {
@@ -240,7 +245,8 @@ impl GraphConstructor {
             NodeKind::Projection(ProjectionInfo::Result),
             self.current_block,
             &[node],
-        ).accept()
+        )
+        .accept()
     }
 
     pub fn new_return(&mut self, result: NodeId) -> NodeId {
@@ -250,7 +256,8 @@ impl GraphConstructor {
             NodeKind::Return,
             self.current_block,
             &[side_effect, result],
-        ).accept()
+        )
+        .accept()
     }
 }
 

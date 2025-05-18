@@ -18,10 +18,14 @@ mod interference {
     use itertools::Itertools;
     use linked_hash_map::LinkedHashMap;
 
-    use crate::{ir::{IrGraph, NodeId}, semantic};
+    use crate::{
+        ir::{IrGraph, NodeId},
+        semantic,
+    };
     use std::{
         collections::{HashMap, HashSet},
-        fmt::Write, i64::MAX,
+        fmt::Write,
+        i64::MAX,
     };
 
     #[derive(Default, Debug, Clone)]
@@ -83,15 +87,12 @@ mod interference {
                 .into_iter()
                 .filter(|id| id.needs_register(graph))
                 .collect()
-
-            
+            // ordering
         }
 
         fn max_out_deg(&self) -> usize {
-            let max = self.edges
-                .values()
-                .max_by_key(|set| set.len());
-            max.map(|s| s.len()).unwrap_or(0)            
+            let max = self.edges.values().max_by_key(|set| set.len());
+            max.map(|s| s.len()).unwrap_or(0)
         }
 
         /// Get neighbors of a node
@@ -177,8 +178,58 @@ impl Facts {
     pub fn generate(g: &IrGraph) -> Self {
         let mut res = Self::default();
         res.gen_facts(g);
+        tracing::debug!("completed def, use, succ analysis");
         res.gen_live(g);
+        // let end_block = g.end_block();
+        // res.gen_live_simple(g, end_block);
+        res.generate_live_out(g);
+        tracing::trace!("facts\n{res:?}");
         res
+    }
+
+    fn gen_live_simple(&mut self, g: &IrGraph, id: NodeId) {
+        let node = g.get(id);
+        // If used on right side -> live
+        match node.kind() {
+            NodeKind::BinaryOp(binary_op) => {
+                let left = id.predecessor_skip_proj(g, BinaryOp::LEFT);
+                let right = id.predecessor_skip_proj(g, BinaryOp::RIGHT);
+                self.add_live_in(id, left);
+                self.add_live_in(id, right);
+            }
+            NodeKind::Return => {
+                let return_value = id.predecessor_skip_proj(g, NodeKind::RETURN_RESULT);
+                self.add_live_in(id, return_value);
+            }
+            _ => {}
+        }
+
+        let is_assigned = matches!(node.kind(), NodeKind::BinaryOp(_) | NodeKind::ConstInt);
+
+        for succ in g.successors(id) {
+            let Some(live_in_next_set) = self.live_in.get(&succ).cloned() else {
+                continue;
+            };
+            for live_in_next in live_in_next_set {
+                if is_assigned && live_in_next == id {
+                    continue;
+                }
+                self.add_live_in(id, live_in_next);
+            }
+        }
+
+        if let Some(set) = self.live_in.get(&id) {
+            let alive: String = set
+                .into_iter()
+                .map(|id| id.info(g))
+                .intersperse(", ".to_string())
+                .collect();
+            tracing::trace!("{} live-in {{{alive}}}", id.info(g));
+        }
+
+        for &pred in id.predecessors(g) {
+            self.gen_live_simple(g, pred);
+        }
     }
 
     fn gen_live(&mut self, g: &IrGraph) {
@@ -216,7 +267,9 @@ impl Facts {
                 }
             }
         }
+    }
 
+    fn generate_live_out(&mut self, g: &IrGraph) {
         let mut live_out = HashMap::<_, HashSet<_>>::default();
         // Transform live_in to live_out
         for (n, set) in &self.live_in {
@@ -321,11 +374,41 @@ impl Liveness {
         // This encodes that d and l interfere because d is written while l is still live.
 
         // Construct Interference graph
-        for i in g.nodes().keys() {
-            let Some(defs) = facts.defs.get(i) else {
+        for &id in g.nodes().keys() {
+            //     let node = g.get(id);
+            //     match node.kind() {
+            //         NodeKind::BinaryOp(binary_op) => {
+
+            //             for succ in g.successors(id) {
+            //                 let Some(live_in) = facts.live_in.get(&succ).cloned() else {
+            //                     continue;
+            //                 };
+            //                 for alive in live_in {
+            //                     if alive != id {
+            //                         interference.add_edge(id, alive);
+            //                     }
+            //                 }
+            //             }
+            //         }
+            //         NodeKind::ConstInt => {
+            //             for succ in g.successors(id) {
+            //                 let Some(live_in) = facts.live_in.get(&succ).cloned() else {
+            //                     continue;
+            //                 };
+            //                 for alive in live_in {
+            //                     if alive != id {
+            //                         interference.add_edge(id, alive);
+            //                     }
+            //                 }
+            //             }
+            //         }
+
+            //         _ => {}
+            //     }
+            let Some(defs) = facts.defs.get(&id) else {
                 continue;
             };
-            let Some(live_out) = facts.live_out.get(i) else {
+            let Some(live_out) = facts.live_out.get(&id) else {
                 continue;
             };
             for d in defs {
