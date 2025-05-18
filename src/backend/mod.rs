@@ -51,7 +51,7 @@ impl RegisterProvider for TrivialRegisterProvider {
         self.scan(graph, graph.end_block(), &mut visited)?;
         Ok(())
     }
-    
+
     fn spill_register(&self) -> Alloc {
         panic!("this dont spill")
     }
@@ -154,23 +154,23 @@ where
 
     fn emit(&mut self, mut instr: Asm) {
         match &mut instr {
-            Asm::Movq(l1, l2) |
-            Asm::Addq(l1, l2) | 
-            Asm::Subq(l1, l2) => 
-            {
-                if l1.is_indirect() && l2.is_indirect() {                    
+            Asm::Movq(l1, l2) | Asm::Addq(l1, l2) | Asm::Subq(l1, l2) => {
+                if l1.is_indirect() && l2.is_indirect() {
                     let spill_reg = self.provider.spill_register().into();
                     self.emit(Asm::Movq(*l1, spill_reg));
                     *l1 = spill_reg;
                     self.emit(instr);
+                } else if matches!(l1, Location::Immediate(v) if *v > i64::from(i32::MAX))
+                    && l2.is_indirect()
+                {
+                    self.emit(Asm::Movq(*l1, self.provider.spill_register().into()));
+                    *l1 = self.provider.spill_register().into();
+                    self.emit(instr);
                 } else {
                     self.builder.push(instr);
                 }
-            },
-            Asm::Imulq(_) |
-            Asm::Idivq(_) |
-            Asm::Cqto |
-            Asm::Ret   => {
+            }
+            Asm::Imulq(_) | Asm::Idivq(_) | Asm::Cqto | Asm::Ret => {
                 self.builder.push(instr);
             }
         };
@@ -221,12 +221,12 @@ where
                 // if s2 and d have same register this breaks
                 self.emit(Asm::Movq(s2.into(), self.provider.spill_register().into()));
                 self.emit(Asm::Movq(s1.into(), d.into()));
-                self.emit(Asm::Addq( self.provider.spill_register().into(), d.into()));
+                self.emit(Asm::Addq(self.provider.spill_register().into(), d.into()));
             }
             BinaryOp::Sub => {
                 self.emit(Asm::Movq(s2.into(), self.provider.spill_register().into()));
                 self.emit(Asm::Movq(s1.into(), d.into()));
-                self.emit(Asm::Subq( self.provider.spill_register().into(), d.into()));
+                self.emit(Asm::Subq(self.provider.spill_register().into(), d.into()));
             }
             BinaryOp::Mul => {
                 // d <- s1 * s2
@@ -282,7 +282,7 @@ where
             code,
             "{}",
             self.builder
-            .into_iter()
+                .into_iter()
                 .map(|instr| format!("  {instr}\n"))
                 .collect::<String>()
         );
@@ -312,7 +312,10 @@ enum Location {
 
 impl Location {
     pub fn is_indirect(&self) -> bool {
-        matches!(self, Location::Indirect(_) | Location::IndirectDisplacement(_, _))
+        matches!(
+            self,
+            Location::Indirect(_) | Location::IndirectDisplacement(_, _)
+        )
     }
 }
 
