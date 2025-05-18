@@ -67,6 +67,9 @@ impl Parser {
         while self.tokens.has_more().is_ok() {
             functions.push(self.parse_function()?);
         }
+        if functions.len() == 0 {
+            return Err(ParseError::EndOfFile);
+        }
 
         Ok(ProgrammTree::new(functions.into()))
     }
