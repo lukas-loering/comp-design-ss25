@@ -70,7 +70,7 @@ impl TokenSource {
             Token::Operator(o) if o.kind() == kind => {
                 self.idx += 1;
                 Ok(o)
-            },
+            }
             _ => Err(ParseError::ExpectedOperator {
                 expected: kind,
                 got: token,
@@ -85,12 +85,12 @@ impl TokenSource {
             Token::Identifier(i) => {
                 self.idx += 1;
                 Ok(i)
-            },
+            }
             _ => Err(ParseError::ExpectedIdentifier { got: token }),
         }
     }
 
-    fn has_more(&self) -> Result<(), ParseError> {
+    pub fn has_more(&self) -> Result<(), ParseError> {
         if self.idx >= self.tokens.len() {
             return Err(ParseError::EndOfFile);
         }

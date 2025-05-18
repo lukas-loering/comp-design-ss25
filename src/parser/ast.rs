@@ -267,7 +267,7 @@ impl LiteralTree {
     }
 
     fn parse_hex(value: &str) -> Option<i64> {
-        i64::from_str_radix(value, 16).ok()
+        u32::from_str_radix(value, 16).ok().and_then(|it| Some(i64::from(it)))
     }
 
     pub fn value(&self) -> &str {

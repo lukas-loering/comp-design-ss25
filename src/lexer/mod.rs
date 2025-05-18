@@ -266,7 +266,7 @@ impl<'s> Lexer<'s> {
         while self.has_more(offset) && is_ascii_digit(self.peek(offset)) {
             offset += 1;
         }
-        if self.peek(offset) == "0" && offset > 1 {
+        if self.peek(0) == "0" && offset > 1 {
             // leading zero not allowed
             return ErrorToken::new(
                 self.get_value(offset).into_boxed_str(),

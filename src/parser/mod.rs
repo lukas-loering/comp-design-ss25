@@ -39,6 +39,8 @@ pub enum ParseError {
     ExpectedSeparator { expected: SeparatorKind, got: Token },
     #[error("invalid factor `{got}`")]
     InvalidFactor { got: Token },
+    #[error("multiple functions")]
+    ErrMultiplefunctions,
     #[error("reached end of file")]
     EndOfFile,
 }
@@ -46,18 +48,27 @@ pub enum ParseError {
 #[derive(Debug, Clone)]
 pub struct Parser {
     tokens: TokenSource,
+    function_count: usize,
 }
 
 pub type ParseResult<T> = Result<T, ParseError>;
 
 impl Parser {
     pub fn new(tokens: TokenSource) -> Self {
-        Self { tokens }
+        Self {
+            tokens,
+            function_count: 0,
+        }
     }
     #[tracing::instrument(skip(self))]
     pub fn parse_programm(&mut self) -> ParseResult<ProgrammTree> {
         debug!("parsing programm");
-        Ok(ProgrammTree::new([self.parse_function()?].into()))
+        let mut functions = vec![];
+        while self.tokens.has_more().is_ok() {
+            functions.push(self.parse_function()?);
+        }
+
+        Ok(ProgrammTree::new(functions.into()))
     }
 }
 
@@ -67,8 +78,16 @@ impl Parser {
         let return_type = self.tokens.expect_keyword(KeywordKind::Int)?;
         let ident = self.tokens.expect_identifier()?;
         if ident.value() != "main" {
-            return Err(ParseError::ExpectedExactIdentifier { ident: "main".into(), got: Token::Identifier(ident) });
+            return Err(ParseError::ExpectedExactIdentifier {
+                ident: "main".into(),
+                got: Token::Identifier(ident),
+            });
         }
+
+        if self.function_count > 0 {
+            return Err(ParseError::ErrMultiplefunctions);
+        }
+        self.function_count += 1;
         self.tokens.expect_separator(SeparatorKind::ParenOpen)?;
         self.tokens.expect_separator(SeparatorKind::ParenClose)?;
         let body = self.parse_block()?;
