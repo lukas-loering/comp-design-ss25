@@ -260,14 +260,16 @@ impl LiteralTree {
     fn parse_dec(value: &str) -> Option<i64> {
         let value = value.parse::<i64>().ok()?;
         // bounds check, we only want non-negative 32-bit integers (for now)
-        if value < 0 || value > i32::MAX.into() {
+        if value < 0 || value > 2147483648 {
             return None;
         }
         Some(value)
     }
 
     fn parse_hex(value: &str) -> Option<i64> {
-        u32::from_str_radix(value, 16).ok().and_then(|it| Some(i64::from(it)))
+        u32::from_str_radix(value, 16)
+            .ok()
+            .and_then(|it| Some(i64::from(it)))
     }
 
     pub fn value(&self) -> &str {
