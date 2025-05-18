@@ -218,15 +218,30 @@ where
         match binary_op {
             BinaryOp::Add => {
                 // d <- s1 + s2
-                // if s2 and d have same register this breaks
-                self.emit(Asm::Movq(s2.into(), self.provider.spill_register().into()));
-                self.emit(Asm::Movq(s1.into(), d.into()));
-                self.emit(Asm::Addq(self.provider.spill_register().into(), d.into()));
+                if d == s1 {
+                    self.emit(Asm::Addq(s2.into(), d.into()))
+                } else if d == s2 {
+                    self.emit(Asm::Addq(s1.into(), d.into()))
+                } else {
+                    self.emit(Asm::Movq(s2.into(), d.into()));
+                    self.emit(Asm::Addq(s1.into(), d.into()));
+                }
             }
             BinaryOp::Sub => {
-                self.emit(Asm::Movq(s2.into(), self.provider.spill_register().into()));
-                self.emit(Asm::Movq(s1.into(), d.into()));
-                self.emit(Asm::Subq(self.provider.spill_register().into(), d.into()));
+                if d == s1 {
+                    self.emit(Asm::Subq(s2.into(), d.into()))
+                } else if d == s2 {
+                    // d <- s1 - d
+                    // spill <- s2
+                    // d <- s1
+                    // d -= spill
+                    self.emit(Asm::Movq(s2.into(), self.provider.spill_register().into()));
+                    self.emit(Asm::Movq(s1.into(), d.into()));
+                    self.emit(Asm::Subq(self.provider.spill_register().into(), d.into()));
+                } else {
+                    self.emit(Asm::Movq(s2.into(), d.into()));
+                    self.emit(Asm::Subq(s1.into(), d.into()));
+                }
             }
             BinaryOp::Mul => {
                 // d <- s1 * s2

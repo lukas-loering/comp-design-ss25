@@ -14,7 +14,7 @@ pub struct RegAlloc {
     coloring: LinkedHashMap<NodeId, u32>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Alloc {
     Register(Register),
     StackSlot(usize),
