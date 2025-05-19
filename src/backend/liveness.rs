@@ -36,7 +36,8 @@ mod interference {
 
     impl InterferenceGraph {
         pub fn coloring(&self, graph: &IrGraph) -> LinkedHashMap<NodeId, u32> {
-            let max_color = self.max_out_deg() as u32;
+            let max_color = self.max_out_deg() as u32 - 1;
+            tracing::trace!("max color {max_color}");
             let mut coloring = LinkedHashMap::new();
             let mut used_colors = HashSet::new();
             let ordering = self.maximum_cardinality_search(graph);
@@ -63,8 +64,14 @@ mod interference {
             let mut visited = HashSet::new();
             let mut ordering: Vec<NodeId> = Vec::with_capacity(graph.nodes().len());
 
-            let mut unvisited: LinkedHashSet<NodeId> =
-                graph.nodes().keys().into_iter().sorted().copied().collect();
+            let mut unvisited: LinkedHashSet<NodeId> = graph
+                .nodes()
+                .keys()
+                .into_iter()
+                .filter(|id| id.needs_register(graph))
+                .sorted()
+                .copied()
+                .collect();
 
             for _ in 0..unvisited.len() {
                 // Select node with maximum weight from unvisited nodes
@@ -85,9 +92,6 @@ mod interference {
                 }
             }
             ordering
-                .into_iter()
-                .filter(|id| id.needs_register(graph))
-                .collect()
             // ordering
         }
 
@@ -123,6 +127,9 @@ edge [arrowhead="none"];"#
                 .to_string();
             writeln!(result);
             for (id, node) in g.nodes() {
+                if !id.needs_register(g) {
+                    continue;
+                }
                 write!(result, "{id} [label=\"{}\"]\n", node.info()).unwrap();
             }
             for (from, set) in &self.edges {
@@ -337,7 +344,7 @@ impl Facts {
                         self.succs.entry(*id).or_default().insert(succ);
                         if artifical_use {
                             self.uses.entry(succ).or_default().insert(y);
-
+                            self.uses.entry(succ).or_default().insert(x);
                         }
                     }
                 }
@@ -365,16 +372,6 @@ impl Facts {
 impl Liveness {
     pub fn show(&self, g: &IrGraph) -> String {
         self.edges.graph_viz(g)
-        // let mut result = String::new();
-        // for (node, live) in &self.live_at {
-        //     let live: String = live
-        //         .into_iter()
-        //         .map(|n| format!("{n:2}"))
-        //         .intersperse_with(|| ", ".to_string())
-        //         .collect();
-        //     write!(result, "{node:2} [{live}]\n").unwrap();
-        // }
-        // result
     }
 }
 

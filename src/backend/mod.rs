@@ -238,16 +238,13 @@ where
                 //
                 // d <- s1
                 // d -= s2
-                if d == s1 {
-                    self.emit(Asm::Subl(s2.into(), d.into()))
-                } else if d == s2 {
-                    panic!(
-                        "for non-commutative operations, allocationg s2 and d to same register should be forbidden by the register allocator"
-                    )
-                } else {
-                    self.emit(Asm::Movl(s1.into(), d.into()));
-                    self.emit(Asm::Subl(s2.into(), d.into()));
-                }
+                assert!(
+                    d != s1 && d != s2,
+                    "for non-commutative operations, allocationg s and d to same register should be forbidden by the register allocator"
+                );
+
+                self.emit(Asm::Movl(s1.into(), d.into()));
+                self.emit(Asm::Subl(s2.into(), d.into()));
             }
             BinaryOp::Mul => {
                 // d <- s1 * s2
@@ -259,7 +256,7 @@ where
                 self.emit(Asm::Movl(Register::Rax.into(), d.into()));
             }
             (BinaryOp::Div | BinaryOp::Mod) => {
-                // d <- s1 / s2                
+                // d <- s1 / s2
                 // movq %s1 %rax
                 // idvq %s2
                 // cqto ; sign extend into rdx
@@ -292,7 +289,7 @@ where
         tracing::info!("completed register allocation");
         let mut code = String::new();
         let mut visited = HashSet::new();
-        
+
         // Save frame base pointer
         self.emit(Asm::Pushq(Register::Rbp.into()));
         // set new frame base pointer
