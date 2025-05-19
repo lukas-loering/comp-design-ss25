@@ -286,15 +286,51 @@ impl Facts {
         for (id, node) in g.nodes() {
             match node.kind() {
                 NodeKind::BinaryOp(binary_op) => {
-                    // J1: x <- y op z
-                    let y = id.predecessor_skip_proj(g, BinaryOp::LEFT);
-                    let z = id.predecessor_skip_proj(g, BinaryOp::RIGHT);
+                    // J1: z <- x ★ y
+                    let x = id.predecessor_skip_proj(g, BinaryOp::LEFT);
+                    let y = id.predecessor_skip_proj(g, BinaryOp::RIGHT);
                     self.defs.entry(*id).or_default().insert(*id);
+                    self.uses.entry(*id).or_default().insert(x);
                     self.uses.entry(*id).or_default().insert(y);
-                    self.uses.entry(*id).or_default().insert(z);
+
+                    // Note: This is described in Sebastian Hack's PhD thesis.
+                    //
+                    // Lowering from 3-address to 2-address form transforms
+                    // an instruction like:
+                    //     l: z <- x ★ y
+                    // into:
+                    //     z <- x
+                    //     z ★= y
+                    //
+                    // According to our liveness rules, x and y are only required to be live at this point
+                    // if they are not used later.
+                    //
+                    // This explanation assumes x ≠ y. If x == y, the problem described below does not occur.
+                    //
+                    // The register allocator is allowed to reuse the register of either x or y for z, e.g.:
+                    //     r0: {z, x}, r1: {y}    or    r0: {z, y}, r1: {x}
+                    //
+                    // In the first case, the lowering becomes:
+                    //     r0 <- r0       ; no-op, can be omitted
+                    //     r0 ★= r1       ; correct
+                    //
+                    // In the second case, it becomes:
+                    //     r0 <- r1       ; overwrites y
+                    //     r0 ★= r0       ; incorrect: computes x ★ x instead of x ★ y
+                    //
+                    // For commutative operations (like addition), this can be resolved by swapping operands.
+                    // For non-commutative operations (like subtraction), this is not possible (unless rewritten as negation + addition).
+                    //
+                    // To avoid this, we insert an artificial use of `y` after the current instruction,
+                    // ensuring the register allocator assigns z and y to different registers for non-commutative operations.
+                    let artifical_use = binary_op == BinaryOp::Sub;
                     let succs = g.successors(*id);
                     for succ in succs {
                         self.succs.entry(*id).or_default().insert(succ);
+                        if artifical_use {
+                            self.uses.entry(succ).or_default().insert(y);
+
+                        }
                     }
                 }
                 NodeKind::Return => {

@@ -229,24 +229,22 @@ where
                 } else if d == s2 {
                     self.emit(Asm::Addq(s1.into(), d.into()))
                 } else {
-                    self.emit(Asm::Movq(s2.into(), d.into()));
-                    self.emit(Asm::Addq(s1.into(), d.into()));
+                    self.emit(Asm::Movq(s1.into(), d.into()));
+                    self.emit(Asm::Addq(s2.into(), d.into()));
                 }
             }
             BinaryOp::Sub => {
+                // d <- s1 - s2
+                // 
+                // d <- s1
+                // d -= s2
                 if d == s1 {
                     self.emit(Asm::Subq(s2.into(), d.into()))
                 } else if d == s2 {
-                    // d <- s1 - d
-                    // spill <- s2
-                    // d <- s1
-                    // d -= spill
-                    self.emit(Asm::Movq(s2.into(), self.provider.spill_register().into()));
-                    self.emit(Asm::Movq(s1.into(), d.into()));
-                    self.emit(Asm::Subq(self.provider.spill_register().into(), d.into()));
+                    panic!("for non-commutative operations, allocationg s2 and d to same register should be forbidden by the register allocator")
                 } else {
-                    self.emit(Asm::Movq(s2.into(), d.into()));
-                    self.emit(Asm::Subq(s1.into(), d.into()));
+                    self.emit(Asm::Movq(s1.into(), d.into()));
+                    self.emit(Asm::Subq(s2.into(), d.into()));
                 }
             }
             BinaryOp::Mul => {
