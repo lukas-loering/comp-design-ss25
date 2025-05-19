@@ -17,6 +17,7 @@ mod interference {
 
     use itertools::Itertools;
     use linked_hash_map::LinkedHashMap;
+    use linked_hash_set::LinkedHashSet;
 
     use crate::{
         ir::{IrGraph, NodeId},
@@ -62,8 +63,8 @@ mod interference {
             let mut visited = HashSet::new();
             let mut ordering: Vec<NodeId> = Vec::with_capacity(graph.nodes().len());
 
-            let mut unvisited: HashSet<NodeId> =
-                graph.nodes().keys().into_iter().copied().collect();
+            let mut unvisited: LinkedHashSet<NodeId> =
+                graph.nodes().keys().into_iter().sorted().copied().collect();
 
             for _ in 0..unvisited.len() {
                 // Select node with maximum weight from unvisited nodes

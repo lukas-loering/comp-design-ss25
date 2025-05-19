@@ -110,22 +110,22 @@ impl Register {
 impl std::fmt::Display for Register {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = match self {
-            Register::Rax => "%rax",
-            Register::Rbx => "%rbx",
-            Register::Rcx => "%rcx",
-            Register::Rdx => "%rdx",
-            Register::Rsi => "%rsi",
-            Register::Rdi => "%rdi",
+            Register::Rax => "%eax",
+            Register::Rbx => "%ebx",
+            Register::Rcx => "%ecx",
+            Register::Rdx => "%edx",
+            Register::Rsi => "%esi",
+            Register::Rdi => "%edi",
             Register::Rbp => "%rbp",
             Register::Rsp => "%rsp",
-            Register::R8 => "%r8",
-            Register::R9 => "%r9",
-            Register::R10 => "%r10",
-            Register::R11 => "%r11",
-            Register::R12 => "%r12",
-            Register::R13 => "%r13",
-            Register::R14 => "%r14",
-            Register::R15 => "%r15",
+            Register::R8 => "%r8d",
+            Register::R9 => "%r9d",
+            Register::R10 => "%r10d",
+            Register::R11 => "%r11d",
+            Register::R12 => "%r12d",
+            Register::R13 => "%r13d",
+            Register::R14 => "%r14d",
+            Register::R15 => "%r15d",
         };
         write!(f, "{name}")
     }
@@ -154,29 +154,28 @@ where
 
     fn emit(&mut self, mut instr: Asm) {
         match &mut instr {
-            Asm::Movq(l1, l2) | Asm::Addq(l1, l2) | Asm::Subq(l1, l2) => {
+            Asm::Movl(l1, l2)
+            | Asm::Movq(l1, l2)
+            | Asm::Addl(l1, l2)
+            | Asm::Subl(l1, l2)
+            | Asm::Addq(l1, l2)
+            | Asm::Subq(l1, l2) => {
                 if l1.is_indirect() && l2.is_indirect() {
                     let spill_reg = self.provider.spill_register().into();
-                    self.emit(Asm::Movq(*l1, spill_reg));
+                    self.emit(Asm::Movl(*l1, spill_reg));
                     *l1 = spill_reg;
                     self.emit(instr);
                 } else if matches!(l1, Location::Immediate(v) if *v > i64::from(i32::MAX))
                     && l2.is_indirect()
                 {
-                    self.emit(Asm::Movq(*l1, self.provider.spill_register().into()));
+                    self.emit(Asm::Movl(*l1, self.provider.spill_register().into()));
                     *l1 = self.provider.spill_register().into();
                     self.emit(instr);
                 } else {
                     self.builder.push(instr);
                 }
             }
-            Asm::Imulq(_)
-            | Asm::Idivq(_)
-            | Asm::Cqto
-            | Asm::Ret
-            | Asm::Label(_, _)
-            | Asm::Jne(_, _)
-            | Asm::Cmpq(_, _) => {
+            Asm::Imull(_) | Asm::Idivl(_) | Asm::Cltd | Asm::Ret | Asm::Pushq(_) | Asm::Popq(_) => {
                 self.builder.push(instr);
             }
         };
@@ -187,6 +186,7 @@ where
             Location::Immediate(self.provider.required_stack_size() as i64),
             Register::Rsp.into(),
         ));
+        self.emit(Asm::Popq(Register::Rbp.into()));
         self.emit(Asm::Ret);
     }
 
@@ -200,11 +200,11 @@ where
             NodeKind::BinaryOp(binary_op) => self.binary(binary_op, node),
             NodeKind::ConstInt => {
                 let value = *self.graph.get(node).get_data::<i64>().unwrap();
-                self.emit(Asm::Movq(Location::Immediate(value), self.reg(node).into()));
+                self.emit(Asm::Movl(Location::Immediate(value), self.reg(node).into()));
             }
             NodeKind::Return => {
                 let pred = node.predecessor_skip_proj(self.graph, NodeKind::RETURN_RESULT);
-                self.emit(Asm::Movq(self.reg(pred).into(), Register::Rax.into()));
+                self.emit(Asm::Movl(self.reg(pred).into(), Register::Rax.into()));
                 self.emit_return();
             }
             NodeKind::Phi => panic!("phi not valid in code_gen"),
@@ -225,26 +225,28 @@ where
             BinaryOp::Add => {
                 // d <- s1 + s2
                 if d == s1 {
-                    self.emit(Asm::Addq(s2.into(), d.into()))
+                    self.emit(Asm::Addl(s2.into(), d.into()))
                 } else if d == s2 {
-                    self.emit(Asm::Addq(s1.into(), d.into()))
+                    self.emit(Asm::Addl(s1.into(), d.into()))
                 } else {
-                    self.emit(Asm::Movq(s1.into(), d.into()));
-                    self.emit(Asm::Addq(s2.into(), d.into()));
+                    self.emit(Asm::Movl(s1.into(), d.into()));
+                    self.emit(Asm::Addl(s2.into(), d.into()));
                 }
             }
             BinaryOp::Sub => {
                 // d <- s1 - s2
-                // 
+                //
                 // d <- s1
                 // d -= s2
                 if d == s1 {
-                    self.emit(Asm::Subq(s2.into(), d.into()))
+                    self.emit(Asm::Subl(s2.into(), d.into()))
                 } else if d == s2 {
-                    panic!("for non-commutative operations, allocationg s2 and d to same register should be forbidden by the register allocator")
+                    panic!(
+                        "for non-commutative operations, allocationg s2 and d to same register should be forbidden by the register allocator"
+                    )
                 } else {
-                    self.emit(Asm::Movq(s1.into(), d.into()));
-                    self.emit(Asm::Subq(s2.into(), d.into()));
+                    self.emit(Asm::Movl(s1.into(), d.into()));
+                    self.emit(Asm::Subl(s2.into(), d.into()));
                 }
             }
             BinaryOp::Mul => {
@@ -252,9 +254,9 @@ where
                 // movq %s1 %rax
                 // imulq %s2
                 // movq %rax d
-                self.emit(Asm::Movq(s1.into(), Register::Rax.into()));
-                self.emit(Asm::Imulq(s2.into()));
-                self.emit(Asm::Movq(Register::Rax.into(), d.into()));
+                self.emit(Asm::Movl(s1.into(), Register::Rax.into()));
+                self.emit(Asm::Imull(s2.into()));
+                self.emit(Asm::Movl(Register::Rax.into(), d.into()));
             }
             (BinaryOp::Div | BinaryOp::Mod) => {
                 // d <- s1 / s2
@@ -264,18 +266,18 @@ where
                 // movq %rax d  ; quotiend store here
                 // movq %rdx d  ; remainder store here
 
-                self.emit(Asm::Cmpq(Location::Immediate(-1), s2.into()));
-                self.emit(Asm::Jne("ok", node));
-                self.emit(Asm::Cmpq(Location::Immediate(-2147483648), s1.into()));
-                self.emit(Asm::Jne("ok", node));
+                // self.emit(Asm::Cmpq(Location::Immediate(-1), s2.into()));
+                // self.emit(Asm::Jne("ok", node));
+                // self.emit(Asm::Cmpq(Location::Immediate(-2147483648), s1.into()));
+                // self.emit(Asm::Jne("ok", node));
 
-                self.emit(Asm::Movq(Location::Immediate(0), s2.into()));
-                self.emit(Asm::Idivq(s2.into()));
+                // self.emit(Asm::Movq(Location::Immediate(0), s2.into()));
+                // self.emit(Asm::Idivq(s2.into()));
 
-                self.emit(Asm::Label("ok", node));
-                self.emit(Asm::Movq(s1.into(), Register::Rax.into()));
-                self.emit(Asm::Cqto);
-                self.emit(Asm::Idivq(s2.into()));
+                // self.emit(Asm::Label("ok", node));
+                self.emit(Asm::Movl(s1.into(), Register::Rax.into()));
+                self.emit(Asm::Cltd);
+                self.emit(Asm::Idivl(s2.into()));
 
                 let result = if binary_op == BinaryOp::Div {
                     Register::Rax.into()
@@ -284,7 +286,7 @@ where
                 } else {
                     unreachable!("not a mod-div operation")
                 };
-                self.emit(Asm::Movq(result, d.into()));
+                self.emit(Asm::Movl(result, d.into()));
             }
         };
     }
@@ -299,7 +301,11 @@ where
         tracing::info!("completed register allocation");
         let mut code = String::new();
         let mut visited = HashSet::new();
-        // subq $80, %rsp
+        
+        // Save frame base pointer
+        self.emit(Asm::Pushq(Register::Rbp.into()));
+        // set new frame base pointer
+        self.emit(Asm::Movq(Register::Rsp.into(), Register::Rbp.into()));
         self.emit(Asm::Subq(
             Location::Immediate(self.provider.required_stack_size() as i64),
             Register::Rsp.into(),
@@ -322,14 +328,16 @@ where
 #[derive(Debug, Copy, Clone)]
 enum Asm {
     Movq(Location, Location),
+    Movl(Location, Location),
+    Addl(Location, Location),
     Addq(Location, Location),
     Subq(Location, Location),
-    Imulq(Location),
-    Idivq(Location),
-    Label(&'static str, NodeId),
-    Jne(&'static str, NodeId),
-    Cmpq(Location, Location),
-    Cqto,
+    Subl(Location, Location),
+    Imull(Location),
+    Idivl(Location),
+    Pushq(Location),
+    Popq(Location),
+    Cltd,
     Ret,
 }
 
@@ -371,15 +379,17 @@ impl std::fmt::Display for Asm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Asm::Movq(s, d) => write!(f, "movq {s}, {d}"),
+            Asm::Movl(s, d) => write!(f, "movl {s}, {d}"),
             Asm::Addq(s, d) => write!(f, "addq {s}, {d}"),
+            Asm::Addl(s, d) => write!(f, "addl {s}, {d}"),
+            Asm::Subl(s, d) => write!(f, "subl {s}, {d}"),
             Asm::Subq(s, d) => write!(f, "subq {s}, {d}"),
-            Asm::Imulq(s) => write!(f, "imulq {s}"),
-            Asm::Idivq(s) => write!(f, "idivq {s}"),
-            Asm::Cqto => write!(f, "cqto"),
+            Asm::Imull(s) => write!(f, "imull {s}"),
+            Asm::Idivl(s) => write!(f, "idivl {s}"),
+            Asm::Cltd => write!(f, "cltd"),
             Asm::Ret => write!(f, "ret"),
-            Asm::Label(s, node_id) => write!(f, ".{s}{}:", node_id),
-            Asm::Jne(s, node_id) => write!(f, "jne .{s}{}", node_id),
-            Asm::Cmpq(s, d) => write!(f, "cmpq {s}, {d}"),
+            Asm::Pushq(s) => write!(f, "pushq {s}"),
+            Asm::Popq(s) => write!(f, "popq {s}"),
         }
     }
 }

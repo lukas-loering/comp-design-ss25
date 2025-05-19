@@ -112,9 +112,12 @@ impl RegisterProvider for RegAlloc {
             return 0;
         };
 
+        // Add 4 bytes for the highest slot
+        let stack_size = offset + 4;
+
         // Calling conventions wants alignment to 16 bytes
-        assert_eq!(8, Self::SLOT_SIZE);
-        offset + (Self::SLOT_SIZE * 2)
+        let remainder = stack_size % 16;        
+        stack_size + remainder
     }
 
     fn spill_register(&self) -> Alloc {
