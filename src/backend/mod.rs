@@ -259,22 +259,13 @@ where
                 self.emit(Asm::Movl(Register::Rax.into(), d.into()));
             }
             (BinaryOp::Div | BinaryOp::Mod) => {
-                // d <- s1 / s2
+                // d <- s1 / s2                
                 // movq %s1 %rax
                 // idvq %s2
                 // cqto ; sign extend into rdx
                 // movq %rax d  ; quotiend store here
                 // movq %rdx d  ; remainder store here
 
-                // self.emit(Asm::Cmpq(Location::Immediate(-1), s2.into()));
-                // self.emit(Asm::Jne("ok", node));
-                // self.emit(Asm::Cmpq(Location::Immediate(-2147483648), s1.into()));
-                // self.emit(Asm::Jne("ok", node));
-
-                // self.emit(Asm::Movq(Location::Immediate(0), s2.into()));
-                // self.emit(Asm::Idivq(s2.into()));
-
-                // self.emit(Asm::Label("ok", node));
                 self.emit(Asm::Movl(s1.into(), Register::Rax.into()));
                 self.emit(Asm::Cltd);
                 self.emit(Asm::Idivl(s2.into()));

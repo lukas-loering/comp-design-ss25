@@ -74,6 +74,19 @@ impl IrGraph {
         self.successors.get(&node).cloned().unwrap_or_default()
     }
 
+      pub fn successors_skip_proj(&self, node: NodeId) -> LinkedHashSet<NodeId> {
+        let it = self.successors.get(&node).cloned().unwrap_or_default();
+        let it = it.into_iter().flat_map(|id| {
+            let kind = self.get(id).kind();
+            if matches!(kind, NodeKind::Projection(_)) {
+                self.successors(id)
+            } else {
+                LinkedHashSet::from_iter([id])
+            }
+        });
+        LinkedHashSet::from_iter(it)
+    }
+
     fn next_node_id(&mut self) -> NodeId {
         let current = self.next_node_id;
         self.next_node_id = current.next();
@@ -275,6 +288,16 @@ impl NodeId {
             return pred.predecessor(g, NodeKind::PROJ_IN);
         }
         return pred;
+    }
+
+    pub fn predecessors_skip_proj(self, g: &IrGraph) -> impl Iterator<Item=NodeId> {
+        g.get(self).predecessors.iter().map(|&pred| {
+            if matches!(g.get(pred).kind, NodeKind::Projection(_)) {
+            pred.predecessor(g, NodeKind::PROJ_IN)
+        } else {
+            pred
+        }
+        })
     }
 
     pub fn predecessors(self, g: &IrGraph) -> &[NodeId] {

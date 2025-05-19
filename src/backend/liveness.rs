@@ -188,50 +188,57 @@ impl Facts {
         res
     }
 
-    fn gen_live_simple(&mut self, g: &IrGraph, id: NodeId) {
-        let node = g.get(id);
-        // If used on right side -> live
-        match node.kind() {
-            NodeKind::BinaryOp(binary_op) => {
-                let left = id.predecessor_skip_proj(g, BinaryOp::LEFT);
-                let right = id.predecessor_skip_proj(g, BinaryOp::RIGHT);
-                self.add_live_in(id, left);
-                self.add_live_in(id, right);
-            }
-            NodeKind::Return => {
-                let return_value = id.predecessor_skip_proj(g, NodeKind::RETURN_RESULT);
-                self.add_live_in(id, return_value);
-            }
-            _ => {}
-        }
+    // fn gen_live_simple(&mut self, g: &IrGraph, id: NodeId) {
+    //     let node = g.get(id);
+    //     // If used on right side -> live
+    //     match node.kind() {
+    //         NodeKind::BinaryOp(binary_op) => {
+    //             let left = id.predecessor_skip_proj(g, BinaryOp::LEFT);
+    //             let right = id.predecessor_skip_proj(g, BinaryOp::RIGHT);
+    //             self.add_live_in(id, left);
+    //             self.add_live_in(id, right);
+    //         }
+    //         NodeKind::Return => {
+    //             let return_value = id.predecessor_skip_proj(g, NodeKind::RETURN_RESULT);
+    //             self.add_live_in(id, return_value);
+    //         }
+    //         _ => {}
+    //     }
 
-        let is_assigned = matches!(node.kind(), NodeKind::BinaryOp(_) | NodeKind::ConstInt);
+    //     let is_assigned = matches!(node.kind(), NodeKind::BinaryOp(_) | NodeKind::ConstInt);
 
-        for succ in g.successors(id) {
-            let Some(live_in_next_set) = self.live_in.get(&succ).cloned() else {
-                continue;
-            };
-            for live_in_next in live_in_next_set {
-                if is_assigned && live_in_next == id {
-                    continue;
-                }
-                self.add_live_in(id, live_in_next);
-            }
-        }
+    //     for succ in g.successors(id).into_iter().flat_map(|s| {
+    //         let kind = g.get(s).kind();
+    //         if matches!(kind, NodeKind::Projection(_)) {
+    //             g.successors(s).into_iter().collect_vec()
+    //         } else {
+    //             vec![s]
+    //         }
+    //     }) {
+    //         let Some(live_in_next_set) = self.live_in.get(&succ).cloned() else {
+    //             continue;
+    //         };
+    //         for live_in_next in live_in_next_set {
+    //             if is_assigned && live_in_next == id {
+    //                 continue;
+    //             }
+    //             self.add_live_in(id, live_in_next);
+    //         }
+    //     }
 
-        if let Some(set) = self.live_in.get(&id) {
-            let alive: String = set
-                .into_iter()
-                .map(|id| id.info(g))
-                .intersperse(", ".to_string())
-                .collect();
-            tracing::trace!("{} live-in {{{alive}}}", id.info(g));
-        }
+    //     if let Some(set) = self.live_in.get(&id) {
+    //         let alive: String = set
+    //             .into_iter()
+    //             .map(|id| id.info(g))
+    //             .intersperse(", ".to_string())
+    //             .collect();
+    //         tracing::trace!("{} live-in {{{alive}}}", id.info(g));
+    //     }
 
-        for &pred in id.predecessors(g) {
-            self.gen_live_simple(g, pred);
-        }
-    }
+    //     for &pred in id.predecessors(g) {
+    //         self.gen_live_simple(g, pred);
+    //     }
+    // }
 
     fn gen_live(&mut self, g: &IrGraph) {
         // K1: use(l, x) => live(l, x)
@@ -275,8 +282,8 @@ impl Facts {
         // Transform live_in to live_out
         for (n, set) in &self.live_in {
             for v in set {
-                for m in n.predecessors(g) {
-                    live_out.entry(*m).or_default().insert(*v);
+                for m in n.predecessors_skip_proj(g) {
+                    live_out.entry(m).or_default().insert(*v);
                 }
             }
         }
@@ -325,7 +332,7 @@ impl Facts {
                     // To avoid this, we insert an artificial use of `y` after the current instruction,
                     // ensuring the register allocator assigns z and y to different registers for non-commutative operations.
                     let artifical_use = binary_op == BinaryOp::Sub;
-                    let succs = g.successors(*id);
+                    let succs = g.successors_skip_proj(*id);
                     for succ in succs {
                         self.succs.entry(*id).or_default().insert(succ);
                         if artifical_use {
@@ -342,7 +349,7 @@ impl Facts {
                 NodeKind::ConstInt => {
                     // J3: x <- c
                     self.defs.entry(*id).or_default().insert(*id);
-                    let succs = g.successors(*id);
+                    let succs = g.successors_skip_proj(*id);
                     for succ in succs {
                         self.succs.entry(*id).or_default().insert(succ);
                     }
