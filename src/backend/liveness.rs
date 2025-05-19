@@ -36,7 +36,7 @@ mod interference {
 
     impl InterferenceGraph {
         pub fn coloring(&self, graph: &IrGraph) -> LinkedHashMap<NodeId, u32> {
-            let max_color = self.max_out_deg() as u32 - 1;
+            let max_color = self.max_out_deg() as u32;
             tracing::trace!("max color {max_color}");
             let mut coloring = LinkedHashMap::new();
             let mut used_colors = HashSet::new();
